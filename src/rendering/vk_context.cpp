@@ -1804,22 +1804,19 @@ void VkContext::setMsaaSamples(VkSampleCountFlagBits samples) {
     swapchainDirty = true;
 }
 
-bool VkContext::createSwapchainRenderTargets(const char* verb) {
-    if (!createDepthBuffer()) return false;
-
-    // Create MSAA color image if needed
-    if (!createMsaaColorImage()) return false;
-    // Create single-sample depth resolve image for MSAA path (if supported)
-    if (!createDepthResolveImage()) return false;
-
-    // These framebuffers share their depth, MSAA colour and depth-resolve
-    // images across frames. UNDEFINED discards contents, but does not order
-    // the new layout transition after the previous frame's writes. Include
-    // prior layout transitions as well as attachment writes in availability,
-    // and wait for readers (HiZ, water copies and post-processing) to finish.
-    // Depth resolves use COLOR_ATTACHMENT_OUTPUT, while depth stores can run
-    // in LATE_FRAGMENT_TESTS. The old zero source access mask left both reuse
-    // and the resolve at vkCmdEndRenderPass with write-after-write hazards.
+// These framebuffers share their depth, MSAA colour and depth-resolve
+// images across frames. UNDEFINED discards contents, but does not order
+// the new layout transition after the previous frame's writes. Include
+// prior layout transitions as well as attachment writes in availability,
+// and wait for readers (HiZ, water copies and post-processing) to finish.
+// Depth resolves use COLOR_ATTACHMENT_OUTPUT, while depth stores can run
+// in LATE_FRAGMENT_TESTS. The old zero source access mask left both reuse
+// and the resolve at vkCmdEndRenderPass with write-after-write hazards.
+//
+// One definition because render pass compatibility includes the
+// dependencies: every pass the scene pipelines are drawn in, or that is
+// begun on a scene framebuffer, has to carry exactly this one.
+VkSubpassDependency VkContext::sceneEntryDependency() {
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
     dependency.dstSubpass = 0;
@@ -1832,6 +1829,18 @@ bool VkContext::createSwapchainRenderTargets(const char* verb) {
                                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
                                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    return dependency;
+}
+
+bool VkContext::createSwapchainRenderTargets(const char* verb) {
+    if (!createDepthBuffer()) return false;
+
+    // Create MSAA color image if needed
+    if (!createMsaaColorImage()) return false;
+    // Create single-sample depth resolve image for MSAA path (if supported)
+    if (!createDepthResolveImage()) return false;
+
+    const VkSubpassDependency dependency = sceneEntryDependency();
 
     bool useMsaa = (msaaSamples_ > VK_SAMPLE_COUNT_1_BIT);
 
@@ -2242,13 +2251,7 @@ bool VkContext::createSceneContinueRenderPass() {
     // against how that framebuffer was created - a dependency that differs makes
     // the begin invalid, which is undefined behaviour and rendered the frame into
     // a corner of the screen on the FXAA path.
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    const VkSubpassDependency dependency = sceneEntryDependency();
 
     VkRenderPassCreateInfo rpInfo{};
     rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;

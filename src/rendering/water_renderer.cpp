@@ -1701,13 +1701,9 @@ void WaterRenderer::createReflectionResources() {
     subpass.pColorAttachments = &colorRef;
     subpass.pDepthStencilAttachment = &depthRef;
 
-    VkSubpassDependency dep{};
-    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dep.dstSubpass = 0;
-    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-    dep.srcAccessMask = 0;
-    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    // The scene's pipelines draw into this pass, so it carries the scene
+    // pass's dependency to stay compatible with them.
+    const VkSubpassDependency dep = VkContext::sceneEntryDependency();
 
     std::array<VkAttachmentDescription, 2> attachments = {colorAttach, depthAttach};
     VkRenderPassCreateInfo rpCI{};

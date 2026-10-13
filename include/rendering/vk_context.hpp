@@ -332,6 +332,9 @@ public:
     // Global sampler cache accessor (set during VkContext::initialize, cleared on shutdown).
     // Used by VkTexture and other code that only has a VkDevice handle.
     static VkContext* globalInstance() { return sInstance_; }
+    /// The external dependency into the scene pass. Shared by every pass that
+    /// has to stay compatible with it.
+    static VkSubpassDependency sceneEntryDependency();
 
     // UI texture upload: creates a Vulkan texture from RGBA data and returns
     // a VkDescriptorSet suitable for use as ImTextureID.
