@@ -341,6 +341,40 @@ uint32_t SpellHandler::resolveSpellVisualId(uint32_t spellId) {
     return (it != owner_.spellNameCacheRef().end()) ? it->second.spellVisualId : 0;
 }
 
+float SpellHandler::resolveSpellMissileSpeed(uint32_t spellId) {
+    owner_.loadSpellNameCache();
+    auto it = owner_.spellNameCacheRef().find(spellId);
+    return (it != owner_.spellNameCacheRef().end()) ? it->second.missileSpeed : 0.0f;
+}
+
+bool SpellHandler::launchSpellMissile(uint32_t spellId, uint32_t visualId, uint64_t casterGuid,
+                                      uint64_t targetGuid, bool impactAtEnd) {
+    if (targetGuid == 0 || targetGuid == casterGuid) return false;
+    auto* renderer = owner_.services().renderer;
+    auto* svs = renderer ? renderer->getSpellVisualSystem() : nullptr;
+    if (!svs || !svs->hasSpellMissile(visualId)) return false;
+    // A speed outside this is not a missile speed: Fireball flies at 24, the
+    // fastest bolts at about 60. Anything else is a field read from the wrong
+    // column, and a missile crawling for seconds is worse than none.
+    const float speed = resolveSpellMissileSpeed(spellId);
+    if (!std::isfinite(speed) || speed < 1.0f || speed > 200.0f) return false;
+
+    glm::vec3 start, end;
+    if (!resolveUnitPosition(casterGuid, start) || !resolveUnitPosition(targetGuid, end))
+        return false;
+    // From the casting hand when the caster is drawn, else about chest high;
+    // into the target's chest.
+    start.z += 1.5f;
+    if (auto* characters = renderer->getCharacterRenderer()) {
+        glm::mat4 hand(1.0f);
+        const uint32_t casterInstance = owner_.resolveUnitRenderInstance(casterGuid);
+        if (casterInstance != 0 && characters->getAttachmentTransform(casterInstance, 1, hand))
+            start = glm::vec3(hand[3]);
+    }
+    end.z += 1.0f;
+    return svs->playSpellMissile(visualId, start, end, speed, impactAtEnd);
+}
+
 bool SpellHandler::resolveUnitPosition(uint64_t guid, glm::vec3& outPos) {
     auto* renderer = owner_.services().renderer;
     if (!renderer) return false;
@@ -2272,11 +2306,19 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
                     }
                 }
             }
-            // Impact visual at each hit target
+            // The missile, where the spell has one, and the impact at each hit
+            // target - played by the missile when it lands, or straight away
+            // for a spell that does not fly.
             for (const auto& tgt : data.hitTargets) {
-                if (tgt != 0) {
+                if (tgt == 0) continue;
+                if (!launchSpellMissile(data.spellId, visualId, data.casterUnit, tgt,
+                                        /*impactAtEnd=*/true)) {
                     triggerImpactVisual(data.spellId, tgt);
                 }
+            }
+            for (const auto& miss : data.missTargets) {
+                launchSpellMissile(data.spellId, visualId, data.casterUnit, miss.targetGuid,
+                                   /*impactAtEnd=*/false);
             }
         }
     }
@@ -3273,6 +3315,7 @@ void SpellHandler::loadSpellNameCache() const {
     const uint32_t rangeIdxField = spellL ? spellL->field("RangeIndex") : 0xFFFFFFFF;
     const uint32_t targetAuraStateField = spellL ? spellL->field("TargetAuraState") : 0xFFFFFFFF;
     const uint32_t spellVisualIdField = spellL ? spellL->field("SpellVisualID") : 0xFFFFFFFF;
+    const uint32_t speedField = spellL ? spellL->field("Speed") : 0xFFFFFFFF;
     // Read off the file's own shape. Only TBC's layout named these two, so on
     // WotLK, Classic and Turtle every cooldown this client worked out for itself
     // came back zero - which is most of them, since the server sends a cooldown
@@ -3348,6 +3391,8 @@ void SpellHandler::loadSpellNameCache() const {
             // SpellVisualID: references SpellVisual.dbc for cast/impact M2 effects
             if (spellVisualIdField != 0xFFFFFFFF && spellVisualIdField < dbc->getFieldCount())
                 entry.spellVisualId = dbc->getUInt32(i, spellVisualIdField);
+            if (speedField != 0xFFFFFFFF && speedField < fieldCount)
+                entry.missileSpeed = dbc->getFloat(i, speedField);
             if (recoveryField != 0xFFFFFFFF && recoveryField < fieldCount)
                 entry.recoveryMs = dbc->getUInt32(i, recoveryField);
             if (categoryRecoveryField != 0xFFFFFFFF && categoryRecoveryField < fieldCount)

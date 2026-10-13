@@ -406,6 +406,11 @@ private:
 
     // Resolve SpellVisualID from Spell.dbc cache for a given spellId.
     uint32_t resolveSpellVisualId(uint32_t spellId);
+    float resolveSpellMissileSpeed(uint32_t spellId);
+    /// Fly the spell's missile from the caster to one target. True when one
+    /// launched, which then plays the impact kit itself when it lands.
+    bool launchSpellMissile(uint32_t spellId, uint32_t visualId, uint64_t casterGuid,
+                            uint64_t targetGuid, bool impactAtEnd);
     // Resolve render-space position for a unit GUID (player or entity).
     bool resolveUnitPosition(uint64_t guid, glm::vec3& outPos);
     // Play the cast/precast visual effect at the caster's position.
