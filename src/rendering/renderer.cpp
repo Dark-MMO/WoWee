@@ -1420,7 +1420,6 @@ void Renderer::endFrame() {
     if (postProcessPipeline_) {
         postProcessPipeline_->executePostProcessing(
             currentCmd, currentImageIndex, camera.get(), lastDeltaTime_);
-        if (vkCtx) vkCtx->gpuMark(currentCmd, "post-process");
     }
 
     // The scene is complete: close its pass so the water refraction copy can run
@@ -1429,6 +1428,10 @@ void Renderer::endFrame() {
     // the water. The overlay pass is single-sampled and colour-only, which is
     // also why the UI costs the same here whatever MSAA the scene uses.
     vkCmdEndRenderPass(currentCmd);
+    // After the end, not before: when nothing post-processed, the pass still
+    // open is the scene pass, begun for secondary buffers, and a checkpoint or
+    // timestamp recorded inline into it is invalid.
+    if (postProcessPipeline_ && vkCtx) vkCtx->gpuMark(currentCmd, "post-process");
 
     // Only when water could not be moved out of the scene pass (MSAA). Otherwise
     // renderWorld already took the copy at the one point in the frame where the
@@ -3169,7 +3172,6 @@ void Renderer::renderWorld(game::World* world, game::GameHandler* gameHandler) {
 
         // --- Execute all secondary buffers in correct draw order ---
         VkCommandBuffer validCmds[8];
-        const char* validLabels[8];
         uint32_t numCmds = 0;
         // Terrain first, then the sky. Every sky layer sits on the far plane
         // and depth-tests against what is already there, so drawing it after
@@ -3179,44 +3181,25 @@ void Renderer::renderWorld(game::World* world, game::GameHandler* gameHandler) {
         // blended windows and doodads carry leaves and particles, and blended
         // pixels leave no depth behind, so a sky drawn after them would paint
         // over whichever of them stood against it.
-        const auto queue = [&](VkCommandBuffer buffer, const char* label) {
-            validLabels[numCmds] = label;
-            validCmds[numCmds++] = buffer;
-        };
+        const auto queue = [&](VkCommandBuffer buffer) { validCmds[numCmds++] = buffer; };
         if (drawTerrain || drawGrass)
-            queue(secondaryCmds_[SEC_TERRAIN][frameIdx], "terrain");
-        queue(secondaryCmds_[SEC_SKY][frameIdx], "sky");
+            queue(secondaryCmds_[SEC_TERRAIN][frameIdx]);
+        queue(secondaryCmds_[SEC_SKY][frameIdx]);
         if (wmoRenderer && camera && !skipWMO)
-            queue(secondaryCmds_[SEC_WMO][frameIdx], "wmo");
-        queue(secondaryCmds_[SEC_SELECTION][frameIdx], "selection");
-        queue(secondaryCmds_[SEC_CHARS][frameIdx], "characters");
+            queue(secondaryCmds_[SEC_WMO][frameIdx]);
+        queue(secondaryCmds_[SEC_SELECTION][frameIdx]);
+        queue(secondaryCmds_[SEC_CHARS][frameIdx]);
         if (m2Renderer && camera && !skipM2)
-            queue(secondaryCmds_[SEC_M2][frameIdx], "m2");
-        queue(secondaryCmds_[SEC_POST][frameIdx], "water/effects");
+            queue(secondaryCmds_[SEC_M2][frameIdx]);
+        queue(secondaryCmds_[SEC_POST][frameIdx]);
 
-        // One at a time, with a mark after each.
-        //
-        // Batched, the whole world was a single gap in the timeline and its
-        // 43 of 48 milliseconds could not be attributed to a pass. The
-        // secondaries execute in this order either way; issuing them
-        // separately costs six calls on the CPU and nothing on the GPU, and
-        // buys the breakdown that says which pass to look at. The marks are
-        // written from the primary buffer, so the threads that recorded the
-        // secondaries never touch the shared mark counter.
-        for (uint32_t i = 0; i < numCmds; ++i) {
-            vkCmdExecuteCommands(currentCmd, 1, &validCmds[i]);
-            if (vkCtx) vkCtx->gpuMark(currentCmd, validLabels[i]);
-        }
-        // The world, as one mark.
-        //
-        // Every pass inside it is marked on the single-threaded path below and
-        // none of them are here, because these were recorded into secondary
-        // buffers. So on the path this machine actually takes, the next mark
-        // after shadows was post-process - and the gap to it, which is the
-        // whole scene, was being read as the cost of post-processing. 46 of a
-        // 50ms frame landed under a label that did not earn it.
-        // ...and the whole of it, for the one-line answer.
-        if (vkCtx) vkCtx->gpuMark(currentCmd, "world total");
+        // No marks in here. This pass was begun for secondary buffers, and a
+        // primary may record nothing but vkCmdExecuteCommands inside it: the
+        // timestamps and checkpoints the marks wrote between the passes were
+        // invalid, and validation said so on NVIDIA. The world shows in the
+        // timeline as the gap before the next mark outside the pass;
+        // WOWEE_SINGLE_THREAD_RECORD gives the per-pass breakdown.
+        if (numCmds > 0) vkCmdExecuteCommands(currentCmd, numCmds, validCmds);
 
     } else {
         // ── Fallback: single-threaded inline recording (original path) ──
