@@ -193,6 +193,10 @@ public:
     /// key this client answers itself - see KeybindingManager::answersKey -
     /// because most bindings toggle something and two answers to one press
     /// cancel out.
+    ///
+    /// A release runs the command its press ran, and only for the commands
+    /// bindings.xml marks runOnUp. Every action bar but the main one clicks
+    /// its button on the release.
     bool dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl, bool alt,
                             bool down);
 
@@ -284,6 +288,9 @@ public:
 private:
     lua_State* L_ = nullptr;
     ui::WidgetTree widgets_;
+    /// runOnUp commands whose key is down, by keycode, so the release reaches
+    /// the same command even when a modifier was let go first.
+    std::unordered_map<int, std::string> heldBindings_;
     game::GameHandler* gameHandler_ = nullptr;
     LuaServices luaServices_;
     LuaErrorCallback luaErrorCallback_;
@@ -308,6 +315,8 @@ private:
     [[nodiscard]] const ui::Widget* topKeyboardFrame() const;
     /// Runs a binding command's script. False when it has none, or it failed.
     bool runBindingScript(const std::string& command, bool down);
+    /// Whether bindings.xml marks the command runOnUp.
+    bool bindingRunsOnUp(const std::string& command);
 
     void callFrameScript(uint32_t wid, const char* script, const char* arg = nullptr);
     /// The same, with a number. A handler that compares its argument against
