@@ -7,6 +7,7 @@
 #include "game/game_utils.hpp"
 #include "game/packet_parsers.hpp"
 #include "game/entity.hpp"
+#include "game/tab_target.hpp"
 #include "game/update_field_table.hpp"
 #include "game/opcode_table.hpp"
 #include "rendering/renderer.hpp"
@@ -1343,7 +1344,8 @@ void CombatHandler::setTarget(uint64_t guid) {
         owner_.lastTargetGuidRef() = previous;
         auto entity = owner_.getEntityManager().getEntity(previous);
         if (auto* unit = dynamic_cast<Unit*>(entity.get())) {
-            if (unit->isHostile() || isAggressiveTowardPlayer(previous)) {
+            if (!owner_.isFriendlyFaction(unit->getFactionTemplate()) ||
+                isAggressiveTowardPlayer(previous)) {
                 lastEnemyTargetGuid_ = previous;
             } else {
                 lastFriendTargetGuid_ = previous;
@@ -1538,8 +1540,16 @@ void CombatHandler::targetEnemy(bool reverse) {
         if (t != ObjectType::UNIT && t != ObjectType::PLAYER) return false;
         auto* unit = dynamic_cast<Unit*>(&e);
         if (!unit || unit->getHealth() == 0) return false;
-        return unit->isHostile() || isAggressiveTowardPlayer(guid);
+        return isEnemyTarget(guid, *unit);
     });
+}
+
+bool CombatHandler::isEnemyTarget(uint64_t guid, const Unit& unit) const {
+    return isTabTargetable(unit.isHostile(),
+                           owner_.isFriendlyFaction(unit.getFactionTemplate()),
+                           isAggressiveTowardPlayer(guid),
+                           owner_.getCreatureType(unit.getEntry()),
+                           unit.getUnitFlags());
 }
 
 void CombatHandler::targetFriend(bool reverse) {
@@ -1606,7 +1616,7 @@ void CombatHandler::tabTarget(float playerX, float playerY, float playerZ) {
 
     const bool playerInCombat = owner_.isInCombat();
 
-    // Helper: returns true if the entity is a hostile that can be tab-targeted.
+    // Helper: returns true if the entity is an enemy that can be tab-targeted.
     // Corpses are never tab targets while fighting; out of combat they only
     // qualify when they still hold loot.
     auto isValidTabTarget = [&](const std::shared_ptr<Entity>& e) -> bool {
@@ -1620,9 +1630,7 @@ void CombatHandler::tabTarget(float playerX, float playerY, float playerZ) {
             return lootIt != owner_.localLootStateRef().end() &&
                    !lootIt->second.data.items.empty();
         }
-        const bool hostileByFaction = unit->isHostile();
-        const bool hostileByCombat = isAggressiveTowardPlayer(guid);
-        return hostileByFaction || hostileByCombat;
+        return isEnemyTarget(guid, *unit);
     };
 
     // Restart the cycle after a pause - the player has moved on; the next tab
