@@ -5913,7 +5913,6 @@ void registerSystemLuaAPI(lua_State* L) {
                 {"GetMuteStatus",            lua_ReturnFalse},
                 {"GetActiveVoiceChannel",    lua_ReturnNil},
                 {"GetVoiceCurrentSessionID", lua_ReturnNil},
-                {"GetPartyMember",           lua_ReturnFalse},
                 // GetZonePVPInfo() → pvpType, isSubZonePvP, factionName
                 //
                 // minimap.lua unpacks three and answered nil for all of them,

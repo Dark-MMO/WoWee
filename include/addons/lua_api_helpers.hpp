@@ -380,10 +380,13 @@ inline uint64_t resolveUnitGuid(game::GameHandler* gh, const std::string& uid) {
         try { idx = std::stoi(uid.substr(5)); } catch (...) { return 0; }
         if (idx < 1 || idx > 4) return 0;
         const auto& pd = gh->getPartyData();
-        // party members exclude self; index 1-based
+        // party members exclude self; index 1-based. In a raid the party is
+        // the player's own subgroup, as GetNumPartyMembers counts it.
+        const bool raid = game::groupIsRaid(pd.groupType);
         int found = 0;
         for (const auto& m : pd.members) {
             if (m.guid == gh->getPlayerGuid()) continue;
+            if (raid && m.subGroup != pd.subGroup) continue;
             if (++found == idx) return m.guid;
         }
         return 0;
