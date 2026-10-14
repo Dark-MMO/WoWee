@@ -1642,6 +1642,11 @@ void Application::run() {
                     }
                 }
             }
+            if (event.type == SDL_EVENT_KEY_UP && addonManager_ && addonsLoaded_) {
+                if (auto* engine = addonManager_->getLuaEngine()) {
+                    engine->dispatchBindingKey(event.key.key, false, false, false, false);
+                }
+            }
             if (event.type == SDL_EVENT_KEY_DOWN) {
                 // An addon's edit box takes the keystroke before anything
                 // else looks at it. Otherwise typing into one would also

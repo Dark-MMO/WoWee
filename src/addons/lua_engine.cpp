@@ -5782,6 +5782,7 @@ void LuaEngine::shutdown() {
         // - which is what a logout followed by another login did, since that
         // path loads the interface again on a state it thought was empty.
         widgets_.reset();
+        heldBindings_.clear();
         hoverWid_ = 0;
         lastClickWid_ = 0;
         lastClickTime_ = 0.0;
@@ -9865,12 +9866,32 @@ std::string LuaEngine::bindingCommandForKey(const std::string& key) {
 bool LuaEngine::dispatchBindingKey(int sdlKeycode, bool shift, bool ctrl,
                                    bool alt, bool down) {
     if (!L_) return false;
+    if (!down) {
+        auto held = heldBindings_.find(sdlKeycode);
+        if (held == heldBindings_.end()) return false;
+        const std::string command = std::move(held->second);
+        heldBindings_.erase(held);
+        return runBindingScript(command, false);
+    }
+    // A key held down repeats; the binding it pressed waits for its release.
+    if (heldBindings_.count(sdlKeycode)) return true;
     const std::string command = bindingCommandFor(sdlKeycode, shift, ctrl, alt);
     if (command.empty()) return false;
     // Left alone if the client performs it. Not "already handled, so skip the
     // work" - running it as well would undo it.
     if (clientActsOnBinding(command)) return false;
-    return runBindingScript(command, down);
+    if (!runBindingScript(command, true)) return false;
+    if (bindingRunsOnUp(command)) heldBindings_[sdlKeycode] = command;
+    return true;
+}
+
+bool LuaEngine::bindingRunsOnUp(const std::string& command) {
+    lua_getglobal(L_, "__WoweeBindingRunOnUp");
+    if (!lua_istable(L_, -1)) { lua_pop(L_, 1); return false; }
+    lua_getfield(L_, -1, command.c_str());
+    const bool onUp = lua_toboolean(L_, -1) != 0;
+    lua_pop(L_, 2);
+    return onUp;
 }
 
 bool LuaEngine::runBindingScript(const std::string& command, bool down) {
