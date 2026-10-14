@@ -969,4 +969,26 @@ void invalidateTradeSkillRows();
 /// and is then copied.
 uint32_t arenaTeamIdAtIndex(game::GameHandler* gh, int index);
 
+// One Lua global called with the arguments already pushed, its one result
+// left as a string. Empty when the global is not a function or raised.
+inline std::string callGlobal(lua_State* L, const char* name, int nargs) {
+    // The function has to sit under its arguments.
+    lua_getglobal(L, name);
+    if (!lua_isfunction(L, -1)) {
+        lua_pop(L, 1 + nargs);
+        return {};
+    }
+    lua_insert(L, -(nargs + 1));
+    std::string out;
+    if (lua_pcall(L, nargs, 1, 0) == 0) {
+        if (lua_isboolean(L, -1)) out = lua_toboolean(L, -1) ? "1" : "0";
+        else if (const char* text = lua_tostring(L, -1)) out = text;
+    } else {
+        LOG_WARNING(name, " raised: ",
+                    lua_tostring(L, -1) ? lua_tostring(L, -1) : "?");
+    }
+    lua_pop(L, 1);
+    return out;
+}
+
 } // namespace wowee::addons

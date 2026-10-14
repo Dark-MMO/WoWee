@@ -4714,27 +4714,6 @@ static std::vector<std::string> splitBar(const char* text) {
     return out;
 }
 
-// One Lua global called with the arguments already pushed, its one result
-// left as a string. Empty when the global is not a function or raised.
-static std::string callGlobal(lua_State* L, const char* name, int nargs) {
-    // The function has to sit under its arguments.
-    lua_getglobal(L, name);
-    if (!lua_isfunction(L, -1)) {
-        lua_pop(L, 1 + nargs);
-        return {};
-    }
-    lua_insert(L, -(nargs + 1));
-    std::string out;
-    if (lua_pcall(L, nargs, 1, 0) == 0) {
-        if (lua_isboolean(L, -1)) out = lua_toboolean(L, -1) ? "1" : "0";
-        else if (const char* text = lua_tostring(L, -1)) out = text;
-    } else {
-        LOG_WARNING("Setting store: ", name, " raised: ",
-                    lua_tostring(L, -1) ? lua_tostring(L, -1) : "?");
-    }
-    lua_pop(L, 1);
-    return out;
-}
 
 // A row on a store - see SettingDesc::store - read in the units its control
 // shows: the index of its choice for an enum with `values`, the raw text
