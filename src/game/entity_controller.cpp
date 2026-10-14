@@ -687,6 +687,7 @@ EntityController::UnitFieldIndices EntityController::UnitFieldIndices::resolve()
         .combatReach = fieldIndex(UF::UNIT_FIELD_COMBATREACH),
         .bytes0 = fieldIndex(UF::UNIT_FIELD_BYTES_0),
         .bytes1 = fieldIndex(UF::UNIT_FIELD_BYTES_1),
+        .bytes2 = fieldIndex(UF::UNIT_FIELD_BYTES_2),
         .petXp = fieldIndex(UF::UNIT_FIELD_PETEXPERIENCE),
         .petNextLevelXp = fieldIndex(UF::UNIT_FIELD_PETNEXTLEVELEXP),
         .stat0 = fieldIndex(UF::UNIT_FIELD_STAT0),
@@ -695,6 +696,23 @@ EntityController::UnitFieldIndices EntityController::UnitFieldIndices::resolve()
         .minDamage = fieldIndex(UF::UNIT_FIELD_MINDAMAGE),
         .maxDamage = fieldIndex(UF::UNIT_FIELD_MAXDAMAGE)
     };
+}
+
+void EntityController::setPlayerShapeshiftForm(uint8_t newForm) {
+    if (newForm != owner_.shapeshiftFormIdRef()) {
+        owner_.shapeshiftFormIdRef() = newForm;
+        LOG_INFO("Shapeshift form changed: ", static_cast<int>(newForm));
+        pendingEvents_.emit("UPDATE_SHAPESHIFT_FORM", {});
+        pendingEvents_.emit("UPDATE_SHAPESHIFT_FORMS", {});
+        // The stance bar and the action bar are two different
+        // things. These two move the stance bar; the extra action
+        // bar a form brings with it is shown and hidden by
+        // UPDATE_BONUS_ACTIONBAR, and actionbutton.lua repages on
+        // the same event. Neither was fired, so the bar never
+        // appeared and the buttons kept reading page one.
+        pendingEvents_.emit("UPDATE_BONUS_ACTIONBAR", {});
+        pendingEvents_.emit("ACTIONBAR_PAGE_CHANGED", {});
+    }
 }
 
 EntityController::PlayerFieldIndices EntityController::PlayerFieldIndices::resolve() {
@@ -920,6 +938,11 @@ bool EntityController::applyUnitFieldsOnCreate(const UpdateBlock& block,
         }
         else if (key == ufi.npcFlags) { unit->setNpcFlags(val); }
         else if (key == ufi.npcEmoteState) { unit->setNpcEmoteState(val); }
+        else if (ufi.bytes2 != 0xFFFF && key == ufi.bytes2) {
+            if (block.guid == owner_.getPlayerGuid()) {
+                setPlayerShapeshiftForm(static_cast<uint8_t>((val >> 24) & 0xFF));
+            }
+        }
         else if (key == ufi.dynFlags) {
             unit->setDynamicFlags(val);
             if ((block.objectType == ObjectType::UNIT ||
@@ -1107,21 +1130,16 @@ EntityController::UnitFieldUpdateResult EntityController::applyUnitFieldsOnUpdat
                     owner_.stealthStateCallbackRef()(nowStealthed);
                 }
 
-                uint8_t newForm = static_cast<uint8_t>((val >> 24) & 0xFF);
-                if (newForm != owner_.shapeshiftFormIdRef()) {
-                    owner_.shapeshiftFormIdRef() = newForm;
-                    LOG_INFO("Shapeshift form changed: ", static_cast<int>(newForm));
-                    pendingEvents_.emit("UPDATE_SHAPESHIFT_FORM", {});
-                    pendingEvents_.emit("UPDATE_SHAPESHIFT_FORMS", {});
-                    // The stance bar and the action bar are two different
-                    // things. These two move the stance bar; the extra action
-                    // bar a form brings with it is shown and hidden by
-                    // UPDATE_BONUS_ACTIONBAR, and actionbutton.lua repages on
-                    // the same event. Neither was fired, so the bar never
-                    // appeared and the buttons kept reading page one.
-                    pendingEvents_.emit("UPDATE_BONUS_ACTIONBAR", {});
-                    pendingEvents_.emit("ACTIONBAR_PAGE_CHANGED", {});
-                }
+                // Where the expansion keeps the form here; WotLK moved it to
+                // BYTES_2 and uses this byte for the animation tier, which a
+                // ghost sets to 1 - read as a form, releasing spirit paged the
+                // action bar to an empty bonus bar.
+                if (ufi.bytes2 == 0xFFFF) setPlayerShapeshiftForm(static_cast<uint8_t>((val >> 24) & 0xFF));
+            }
+        }
+        else if (ufi.bytes2 != 0xFFFF && key == ufi.bytes2) {
+            if (block.guid == owner_.getPlayerGuid()) {
+                setPlayerShapeshiftForm(static_cast<uint8_t>((val >> 24) & 0xFF));
             }
         }
         else if (key == ufi.dynFlags) {

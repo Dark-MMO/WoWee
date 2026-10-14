@@ -4529,7 +4529,7 @@ private:
     // Mirror timers (0=fatigue, 1=breath, 2=feigndeath)
     MirrorTimer mirrorTimers_[3];
 
-    // Shapeshift form (from UNIT_FIELD_BYTES_1 byte 3)
+    // Shapeshift form (UNIT_FIELD_BYTES_2 byte 3 on WotLK, BYTES_1 byte 3 before)
     uint8_t  shapeshiftFormId_ = 0;
     // Combo points (rogues/druids)
     uint8_t  comboPoints_ = 0;
