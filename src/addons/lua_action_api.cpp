@@ -1665,7 +1665,8 @@ void applySavedBindings(bool pushLive) {
     for (const auto& [command, saved] : wowee::addons::parseSavedBindings(in)) {
         if (!pushLive && liveKeyFor(command)) continue;
         bindingKeys()[command] = saved;
-        if (pushLive) pushBindingToClient(command, saved[0]);
+        // A binding saved in the second slot alone is still a binding.
+        if (pushLive) pushBindingToClient(command, saved[0].empty() ? saved[1] : saved[0]);
     }
     if (pushLive) return;
     // The manager's keys win, so none of them may also sit on another command:

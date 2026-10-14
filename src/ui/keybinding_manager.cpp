@@ -178,7 +178,8 @@ const char* KeybindingManager::getActionName(Action action) {
 void KeybindingManager::loadFromConfigFile(const std::string& filePath) {
     std::ifstream file(filePath);
     if (!file.is_open()) {
-        LOG_ERROR("KeybindingManager: Failed to open config file: ", filePath);
+        // Nothing saved yet, as on a first start.
+        LOG_INFO("KeybindingManager: no config file at ", filePath);
         return;
     }
 
