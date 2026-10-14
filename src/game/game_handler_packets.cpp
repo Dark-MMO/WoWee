@@ -1710,8 +1710,13 @@ void GameHandler::registerRemainingOpcodes() {
     dispatchTable_[Opcode::SMSG_PLAYER_VEHICLE_DATA] = [this](network::Packet& packet) {
         // PackedGuid (player guid) + uint32 vehicleId
         // vehicleId == 0 means the player left the vehicle
-        if (packet.hasRemaining(1)) {
-            (void)packet.readPackedGuid(); // player guid (unused)
+        //
+        // Sent to everyone in range, about whoever mounted a multi-seat mount,
+        // so it is ours only when the guid is - otherwise anyone nearby
+        // mounting a mammoth hid this player's own model.
+        if (!packet.hasRemaining(1) || packet.readPackedGuid() != playerGuid) {
+            packet.skipAll();
+            return;
         }
         uint32_t newVehicleId = 0;
         if (packet.hasRemaining(4)) {
