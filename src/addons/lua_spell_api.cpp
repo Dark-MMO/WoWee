@@ -881,11 +881,14 @@ static int lua_TargetUnit(lua_State* L) {
     return 0;
 }
 
-// ClearTarget() - clear current target
+// ClearTarget() - clear current target. Answers whether there was one, which
+// ToggleGameMenu reads to stop there instead of also opening the game menu.
 static int lua_ClearTarget(lua_State* L) {
     auto* gh = getGameHandler(L);
+    const bool hadTarget = gh && gh->hasTarget();
     if (gh) gh->clearTarget();
-    return 0;
+    lua_pushboolean(L, hadTarget);
+    return 1;
 }
 
 // FocusUnit(unitId) - set focus target
@@ -1211,15 +1214,19 @@ void registerSpellLuaAPI(lua_State* L) {
                 {"GetTotemTimeLeft", lua_GetTotemTimeLeft},
                 {"SpellStopCasting", [](lua_State* L) -> int {
             auto* gh = getGameHandler(L);
+            const bool wasCasting = gh && gh->isCasting();
             if (gh) gh->cancelCast();
-            return 0;
+            lua_pushboolean(L, wasCasting);
+            return 1;
         }},
                 {"SpellStopTargeting", [](lua_State* L) -> int {
             // No AoE reticle, but the item cursor a stone or an oil arms is a
             // kind of targeting and escape has to put it down.
             auto* gh = getGameHandler(L);
-            if (gh && gh->isAwaitingItemTarget()) gh->cancelItemTargeting();
-            return 0;
+            const bool wasTargeting = gh && gh->isAwaitingItemTarget();
+            if (wasTargeting) gh->cancelItemTargeting();
+            lua_pushboolean(L, wasTargeting);
+            return 1;
         }},
                 {"SpellIsTargeting", [](lua_State* L) -> int {
             auto* gh = getGameHandler(L);
