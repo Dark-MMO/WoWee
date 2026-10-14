@@ -82,6 +82,9 @@ public:
     [[nodiscard]] bool isCasting() const { return casting_ || restorationActive_; }
     [[nodiscard]] bool isChanneling() const { return casting_ ? castIsChannel_ : restorationActive_; }
     [[nodiscard]] bool isRestoring() const { return restorationActive_; }
+    /// Auto Shot or Shoot while it repeats, otherwise 0.
+    [[nodiscard]] uint32_t getAutoRepeatSpellId() const { return autoRepeatSpellId_; }
+    void clearAutoRepeat() { autoRepeatSpellId_ = 0; }
     [[nodiscard]] bool isGameObjectInteractionCasting() const;
     [[nodiscard]] uint32_t getCurrentCastSpellId() const {
         return casting_ ? currentCastSpellId_ : restorationSpellId_;
@@ -361,6 +364,7 @@ private:
     // --- Packet handlers ---
     void handleInitialSpells(network::Packet& packet);
     void handleCastFailed(network::Packet& packet);
+    [[nodiscard]] bool answersPress(const CastFailedData& data, uint8_t castCount) const;
     void handleSpellStart(network::Packet& packet);
     void handleSpellGo(network::Packet& packet);
     void handleSpellCooldown(network::Packet& packet);
@@ -461,6 +465,8 @@ private:
     bool casting_ = false;
     bool castIsChannel_ = false;
     uint32_t currentCastSpellId_ = 0;
+    uint32_t autoRepeatSpellId_ = 0;
+    uint8_t autoRepeatCastCount_ = 0;
     float castTimeRemaining_ = 0.0f;
     float castTimeTotal_ = 0.0f;
     bool restorationActive_ = false;

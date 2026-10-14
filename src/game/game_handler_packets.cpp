@@ -1254,11 +1254,17 @@ void GameHandler::registerCoreOpcodes() {
     };
 
     // ---- Auto-repeat / auras / dispel / totem ----
-    dispatchTable_[Opcode::SMSG_CANCEL_AUTO_REPEAT] = [this](network::Packet& /*packet*/) {
+    dispatchTable_[Opcode::SMSG_CANCEL_AUTO_REPEAT] = [this](network::Packet& packet) {
         // The server saying a repeating spell has stopped. Nothing in this
         // client's own interface reads it, which is why it did nothing - but
         // the action button flashes for as long as one is running and stops on
-        // exactly this.
+        // exactly this. WotLK servers name the shooter and tell everyone
+        // nearby; older ones send it empty, to the shooter alone.
+        if (packet.hasRemaining(1) &&
+            (!packet.hasFullPackedGuid() || packet.readPackedGuid() != playerGuid)) {
+            return;
+        }
+        if (spellHandler_) spellHandler_->clearAutoRepeat();
         fireAddonEvent("STOP_AUTOREPEAT_SPELL", {});
     };
 

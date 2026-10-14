@@ -162,7 +162,8 @@ class GameHandler : public IConnectionState,
                      public ISocialState,
                      public IPvpState {
     /// tests/game_replay.hpp: hands this handler server packets the way the
-    /// socket would, and puts it in the world without a login.
+    /// socket would, keeps what it sends, and puts it in the world without a
+    /// login.
     friend struct GameHandlerTestAccess;
 
 public:
@@ -1186,6 +1187,7 @@ public:
         return spellHandler_ ? spellHandler_->isGameObjectInteractionCasting() : false;
     }
     uint32_t getCurrentCastSpellId() const { return spellHandler_ ? spellHandler_->getCurrentCastSpellId() : 0; }
+    uint32_t getAutoRepeatSpellId() const { return spellHandler_ ? spellHandler_->getAutoRepeatSpellId() : 0; }
     float getCastProgress() const { return spellHandler_ ? spellHandler_->getCastProgress() : 0.0f; }
     float getCastTimeRemaining() const { return spellHandler_ ? spellHandler_->getCastTimeRemaining() : 0.0f; }
     float getCastTimeTotal() const { return spellHandler_ ? spellHandler_->getCastTimeTotal() : 0.0f; }
