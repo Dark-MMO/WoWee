@@ -220,8 +220,8 @@ static int lua_IsCurrentAction(lua_State* L) {
         const auto& bar = gh->getActionBar();
         if (slot < static_cast<int>(bar.size()) &&
             bar[slot].type == game::ActionBarSlot::SPELL) {
-            const uint32_t castId = gh->isCasting() ? gh->getCurrentCastSpellId() : 0;
-            current = game::isCurrentSpellAction(bar[slot].id, castId, gh->isAutoAttacking());
+            current = game::isCurrentSpellAction(bar[slot].id, gh->getActiveActionSpellId(),
+                                                 gh->isAutoAttacking());
         }
     }
     lua_pushboolean(L, current);

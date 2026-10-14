@@ -1,6 +1,7 @@
 #include "game/spell_handler.hpp"
 #include "addons/lua_api_registrations.hpp"
 #include "game/protocol_constants.hpp"
+#include "game/current_action.hpp"
 #include "game/gather_spells.hpp"
 #include "game/spell_classification.hpp"
 #include "game/pet_action.hpp"
@@ -1153,7 +1154,11 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
     // Optimistically start GCD immediately on cast. Nothing else announces this
     // GCD, so without these the buttons are not asked again and the sweep for
     // a spell with no cooldown of its own never draws.
-    if (!isGCDActive()) {
+    owner_.loadSpellNameCache();
+    const auto spellInfo = owner_.spellNameCacheRef().find(spellId);
+    const bool nextSwing = spellInfo != owner_.spellNameCacheRef().end() &&
+                           isOnNextSwingSpell(spellInfo->second.attr);
+    if (!nextSwing && !isGCDActive()) {
         gcdTotal_ = 1.5f;
         gcdStartedAt_ = std::chrono::steady_clock::now();
         optimisticGcdSpellId_ = spellId;
@@ -1722,7 +1727,7 @@ void SpellHandler::updateTimers(float dt) {
     // the swing toggles along its own; the buttons only redraw their checked
     // state on ACTIONBAR_UPDATE_STATE. Comparing here announces each change
     // once, within the frame, whichever path made it.
-    const uint32_t castNow = casting_ ? currentCastSpellId_ : 0;
+    const uint32_t castNow = getActiveActionSpellId();
     const bool swingNow = owner_.isAutoAttacking();
     if ((castNow != announcedCastSpellId_ || swingNow != announcedAutoAttack_) &&
         owner_.addonEventCallbackRef()) {
@@ -1933,6 +1938,7 @@ void SpellHandler::handleCastFailed(network::Packet& packet) {
     casting_ = false;
     castIsChannel_ = false;
     currentCastSpellId_ = 0;
+    if (data.spellId == nextSwingSpellId_) nextSwingSpellId_ = 0;
     castTimeRemaining_ = 0.0f;
     // Refused before it ever repeated, so the start announced on the press
     // needs its stop: the server only cancels a repeat that was running. A
@@ -2064,6 +2070,17 @@ void SpellHandler::handleSpellStart(network::Packet& packet) {
         }
     }
 
+    // Player's on-next-swing ability (Raptor Strike, Heroic Strike): a zero cast
+    // time, then nothing until SMSG_SPELL_GO when the swing lands. Its button
+    // stays lit for that wait.
+    if (data.casterUnit == owner_.getPlayerGuid() && data.castTime == 0) {
+        owner_.loadSpellNameCache();
+        auto it = owner_.spellNameCacheRef().find(data.spellId);
+        if (it != owner_.spellNameCacheRef().end() && isOnNextSwingSpell(it->second.attr)) {
+            nextSwingSpellId_ = data.spellId;
+        }
+    }
+
     // Player's own cast
     if (data.casterUnit == owner_.getPlayerGuid() && data.castTime > 0 && !rangedWeaponAttack) {
         // Cancel pending GO retries
@@ -2138,6 +2155,7 @@ void SpellHandler::handleSpellGo(network::Packet& packet) {
     const bool rangedWeaponAttack = spellclass::isRangedWeaponAutoAttack(data.spellId);
 
     if (data.casterUnit == owner_.getPlayerGuid()) {
+        if (data.spellId == nextSwingSpellId_) nextSwingSpellId_ = 0;
         owner_.loadSpellNameCache();
         spellclass::RestChannelKind restKind = spellclass::RestChannelKind::NONE;
         auto spellNameIt = owner_.spellNameCacheRef().find(data.spellId);
@@ -3123,6 +3141,7 @@ void SpellHandler::resetCastState() {
     currentCastSpellId_ = 0;
     castTimeRemaining_ = 0.0f;
     castTimeTotal_ = 0.0f;  // Must match castTimeRemaining_ to keep getCastProgress() == 0
+    nextSwingSpellId_ = 0;
     craftQueueSpellId_ = 0;
     craftQueueRemaining_ = 0;
     queuedSpellId_ = 0;
@@ -4344,9 +4363,10 @@ void SpellHandler::handleSpellFailure(network::Packet& packet) {
         : packet.readPackedGuid();
     // Classic omits the castCount byte; TBC and WotLK include it
     const size_t remainingFields = isClassic ? 5u : 6u;  // spellId(4)+reason(1) [+castCount(1)]
+    uint32_t failSpellId = 0;
     if (packet.hasRemaining(remainingFields)) {
         if (!isClassic) /*uint8_t castCount =*/ packet.readUInt8();
-        uint32_t failSpellId = packet.readUInt32();
+        failSpellId = packet.readUInt32();
         uint8_t rawFailReason = packet.readUInt8();
         // Classic result enum starts at 0=AFFECTING_COMBAT; shift +1 for WotLK table
         uint8_t failReason = isClassic ? static_cast<uint8_t>(rawFailReason + 1) : rawFailReason;
@@ -4385,6 +4405,7 @@ void SpellHandler::handleSpellFailure(network::Packet& packet) {
         // Player's own cast failed - clear gather-node loot target so the
         // next timed cast doesn't try to loot a stale interrupted gather node.
         casting_ = false; castIsChannel_ = false; currentCastSpellId_ = 0;
+        if (failSpellId == nextSwingSpellId_) nextSwingSpellId_ = 0;
         owner_.lastInteractedGoGuidRef() = 0;
         craftQueueSpellId_ = 0;
         craftQueueRemaining_ = 0;

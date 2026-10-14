@@ -1188,6 +1188,7 @@ public:
     }
     uint32_t getCurrentCastSpellId() const { return spellHandler_ ? spellHandler_->getCurrentCastSpellId() : 0; }
     uint32_t getAutoRepeatSpellId() const { return spellHandler_ ? spellHandler_->getAutoRepeatSpellId() : 0; }
+    uint32_t getActiveActionSpellId() const { return spellHandler_ ? spellHandler_->getActiveActionSpellId() : 0; }
     float getCastProgress() const { return spellHandler_ ? spellHandler_->getCastProgress() : 0.0f; }
     float getCastTimeRemaining() const { return spellHandler_ ? spellHandler_->getCastTimeRemaining() : 0.0f; }
     float getCastTimeTotal() const { return spellHandler_ ? spellHandler_->getCastTimeTotal() : 0.0f; }
