@@ -1836,14 +1836,14 @@ static int lua_GetMaxCombatRatingBonus(lua_State* L) {
 ///
 /// Rested means there is rested experience left to spend, not that the player
 /// is standing in an inn. Those are different questions and this asked the
-/// second: IsResting reads the rest-state byte out of PLAYER_BYTES_2, which the
-/// server clears the moment you walk outside, while the pool you earned in
-/// there is spent over the next several levels. So the bar went back to the
-/// normal purple with the exhaustion tick still several bubbles ahead of the
-/// fill - the two disagreeing on screen about the same thing.
+/// second: it read IsResting, which ends the moment you walk outside, while
+/// the pool you earned in there is spent over the next several levels. So the
+/// bar went back to the normal purple with the exhaustion tick still several
+/// bubbles ahead of the fill - the two disagreeing on screen about the same
+/// thing.
 ///
-/// IsResting keeps that byte, which is the right source for the "Resting"
-/// indicator it feeds.
+/// IsResting reads PLAYER_FLAGS 0x20, which is the right source for the
+/// "Resting" indicator it feeds.
 static int lua_GetRestState(lua_State* L) {
     auto* gh = getGameHandler(L);
     const bool rested = gh && gh->getPlayerRestedXp() > 0;
