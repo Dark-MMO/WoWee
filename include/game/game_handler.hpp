@@ -4,6 +4,7 @@
 #include "game/calendar_data.hpp"
 #include "game/game_interfaces.hpp"
 #include "game/world_packets.hpp"
+#include "game/packed_time.hpp"
 #include "game/character.hpp"
 #include "game/opcode_table.hpp"
 #include "game/update_field_table.hpp"
@@ -1473,7 +1474,11 @@ public:
     // format is a packed bitfield, the sky divided by 86400 as though it were
     // seconds, GetGameTime split it as hours, and SMSG_SERVERTIME wrote a unix
     // timestamp into the same field.
-    float getGameTime() const { return gameTime_; }
+    float getGameTime() const {
+        if (gameTime_ < 0.0f) return gameTime_;
+        const std::chrono::duration<double> since = std::chrono::steady_clock::now() - gameTimeSetAt_;
+        return gameClockHour(gameTime_, since.count(), timeSpeed_);
+    }
     float getTimeSpeed() const { return timeSpeed_; }
 
     // Global Cooldown (GCD) - set when the server sends a spellId=0 cooldown entry
@@ -4964,7 +4969,8 @@ private:
     ///
     /// The old comment said seconds. The code that assigns it writes hours.
     float gameTime_ = -1.0f;
-    float timeSpeed_ = 0.0166f;   // Time scale (default: 1 game day = 1 real hour)
+    std::chrono::steady_clock::time_point gameTimeSetAt_{};
+    float timeSpeed_ = 0.0166f;   // Game minutes per real second (1/60 keeps realm time)
     void handleLoginSetTimeSpeed(network::Packet& packet);
 
     // ---- Global Cooldown (GCD) ----

@@ -676,7 +676,7 @@ void GameHandler::handleLoginSetTimeSpeed(network::Packet& packet) {
     // 86400 to get a time of day, which made the sky's clock a number with no
     // relation to the hour the server sent.
     //
-    // timeScale: time speed multiplier (typically 0.0166 for 1 day = 1 hour)
+    // timeScale: game minutes per real second (0.0166, so the clock keeps realm time)
 
     if (packet.getSize() < 8) {
         LOG_WARNING("SMSG_LOGIN_SETTIMESPEED: packet too small (", packet.getSize(), " bytes)");
@@ -688,12 +688,12 @@ void GameHandler::handleLoginSetTimeSpeed(network::Packet& packet) {
 
     // Hours since midnight, which is what GetGameTime already assumed and what
     // the sky wants. One meaning for this field, written down here.
+    gameTimeSetAt_ = std::chrono::steady_clock::now();
     gameTime_ = static_cast<float>(now.hour) + static_cast<float>(now.minute) / 60.0f;
     timeSpeed_ = timeScale;
 
     LOG_INFO("Server time: ", now.hour, ":", now.minute, " (gameTime=", gameTime_,
              "h), timeSpeed=", timeSpeed_);
-    LOG_INFO("  (1 game day = ", (1.0f / timeSpeed_) / 60.0f, " real minutes)");
 }
 
 void GameHandler::handleLoginVerifyWorld(network::Packet& packet) {
