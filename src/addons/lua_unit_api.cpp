@@ -2272,34 +2272,27 @@ static int lua_GetComboPoints(lua_State* L) {
 }
 
 // UnitReaction(unit, otherUnit) → 1-8 (hostile to exalted)
-// Simplified: hostile=2, neutral=4, friendly=5
 static int lua_UnitReaction(lua_State* L) {
     auto* gh = getGameHandler(L);
     if (!gh) { return luaReturnNil(L); }
-    const char* uid1 = luaL_checkstring(L, 1);
-    const char* uid2 = luaL_checkstring(L, 2);
-    auto* unit2 = resolveUnit(L, uid2);
-    if (!unit2) { return luaReturnNil(L); }
-    // If unit2 is the player, always friendly to self
-    std::string u1(uid1);
+    std::string u1(luaL_checkstring(L, 1));
     toLowerInPlace(u1);
-    std::string u2(uid2);
+    std::string u2(luaL_checkstring(L, 2));
     toLowerInPlace(u2);
-    uint64_t g1 = resolveUnitGuid(gh, u1);
-    uint64_t g2 = resolveUnitGuid(gh, u2);
-    if (g1 == g2) { lua_pushnumber(L, 5); return 1; } // same unit = friendly
-    // How a creature regards the player, which is the question the tooltip
-    // and the name colours ask - UnitReaction(unit, "player"). For a faction
-    // with a standing that is the standing: answered hostile-or-friendly, the
-    // Kurenai read as friendly to an Alliance player at Unfriendly, who could
-    // not then find out why Telaar would not speak to them.
-    const uint64_t me = gh->getPlayerGuid();
-    auto* unit1 = resolveUnit(L, uid1);
-    if (g2 == me && unit1 && unit1->getType() == game::ObjectType::UNIT) {
-        lua_pushnumber(L, gh->unitReactionToPlayer(*unit1));
+    if (!resolveUnit(L, u2.c_str())) { return luaReturnNil(L); }
+    if (resolveUnitGuid(gh, u1) == resolveUnitGuid(gh, u2)) {
+        lua_pushnumber(L, 5); // same unit = friendly
         return 1;
     }
-    lua_pushnumber(L, gh->unitReactionToPlayer(*unit2));
+    // How the unit regards the player, which is the question the tooltip and
+    // the name colours ask - UnitReaction(unit, "player"), in either order and
+    // for players as well as creatures. For a faction with a standing that is
+    // the standing: answered hostile-or-friendly, the Kurenai read as friendly
+    // to an Alliance player at Unfriendly, who could not then find out why
+    // Telaar would not speak to them.
+    auto* unit = unitAskedAbout(L);
+    if (!unit) { return luaReturnNil(L); }
+    lua_pushnumber(L, gh->unitReactionToPlayer(*unit));
     return 1;
 }
 
