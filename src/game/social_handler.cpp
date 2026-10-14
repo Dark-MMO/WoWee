@@ -1431,7 +1431,8 @@ void SocialHandler::requestPlayedTime() {
 
 void SocialHandler::queryWho(const std::string& playerName) {
     if (owner_.getState() != WorldState::IN_WORLD || !owner_.getSocket()) return;
-    auto packet = WhoPacket::build(0, 0, playerName);
+    // Every level: the server drops anyone above the maximum asked for.
+    auto packet = WhoPacket::build(0, 100, playerName);
     owner_.getSocket()->send(packet);
     LOG_INFO("Sent WHO query", playerName.empty() ? "" : " for: " + playerName);
 }
