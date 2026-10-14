@@ -334,12 +334,13 @@ static int pushPlayerFlagPredicate(lua_State* L, uint32_t bit) {
     return 1;
 }
 
+// PLAYER_FLAGS: 0x1 is the group leader, 0x2 AFK, 0x4 DND.
 static int lua_UnitIsAFK(lua_State* L) {
-    return pushPlayerFlagPredicate(L, 0x01);
+    return pushPlayerFlagPredicate(L, 0x02);
 }
 
 static int lua_UnitIsDND(lua_State* L) {
-    return pushPlayerFlagPredicate(L, 0x02);
+    return pushPlayerFlagPredicate(L, 0x04);
 }
 
 // UnitPlayerControlled(unit) - true for players and player-controlled pets
@@ -353,12 +354,12 @@ static int lua_UnitPlayerControlled(lua_State* L) {
     if (guid == 0) { return luaReturnFalse(L); }
     auto entity = gh->getEntityManager().getEntity(guid);
     if (!entity) { return luaReturnFalse(L); }
-    // Players are always player-controlled; pets check UNIT_FLAG_PLAYER_CONTROLLED (0x01000000)
+    // Players are always player-controlled; pets check UNIT_FLAG_PLAYER_CONTROLLED
     if (entity->getType() == game::ObjectType::PLAYER) {
         lua_pushboolean(L, 1);
     } else {
         uint32_t flags = entity->getField(game::fieldIndex(game::UF::UNIT_FIELD_FLAGS));
-        lua_pushboolean(L, (flags & 0x01000000) != 0);
+        lua_pushboolean(L, (flags & game::UNIT_FLAG_PLAYER_CONTROLLED) != 0);
     }
     return 1;
 }
