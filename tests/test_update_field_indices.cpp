@@ -56,6 +56,7 @@ TEST_CASE("the WotLK field indices are what the server sends", "[update-fields]"
         {"UNIT_FIELD_HEALTH", 24},
         {"UNIT_FIELD_MAXHEALTH", 32},
         {"UNIT_FIELD_LEVEL", 54},
+        {"UNIT_FIELD_BASE_MANA", 120},
         {"UNIT_FIELD_FACTIONTEMPLATE", 55},
         {"UNIT_FIELD_FLAGS", 59},
         {"UNIT_FIELD_DISPLAYID", 67},

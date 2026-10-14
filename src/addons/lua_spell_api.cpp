@@ -1184,7 +1184,7 @@ static int lua_IsUsableSpell(lua_State* L) {
             auto playerEntity = gh->getEntityManager().getEntity(gh->getPlayerGuid());
             if (playerEntity) {
                 auto* unit = dynamic_cast<game::Unit*>(playerEntity.get());
-                if (unit && unit->getPower() < spellData.manaCost) {
+                if (unit && unit->getPowerByType(spellData.powerType) < spellData.manaCost) {
                     noMana = true;
                 }
             }

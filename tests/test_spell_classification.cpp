@@ -381,3 +381,11 @@ TEST_CASE("inside a minimum range is out of range", "[spellclass][range]") {
     CHECK_FALSE(withinSpellRange(7.0f, 5.0f, 35.0f, 1.5f, 1.5f));
     CHECK(withinSpellRange(8.0f, 5.0f, 35.0f, 1.5f, 1.5f));
 }
+
+TEST_CASE("a percent cost is a share of the pool, rounded down", "[spellclass][cost]") {
+    using wowee::game::spellclass::percentPowerCost;
+    // Arcane Shot is 5% of base mana; a level 6 hunter's base is around 160.
+    CHECK(percentPowerCost(160, 5) == 8);
+    CHECK(percentPowerCost(159, 5) == 7);
+    CHECK(percentPowerCost(0, 9) == 0);
+}

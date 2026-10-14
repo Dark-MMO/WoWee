@@ -247,7 +247,7 @@ static int lua_IsUsableAction(lua_State* L) {
                 auto pe = gh->getEntityManager().getEntity(gh->getPlayerGuid());
                 if (pe) {
                     auto* unit = dynamic_cast<game::Unit*>(pe.get());
-                    if (unit && unit->getPower() < spellData.manaCost) {
+                    if (unit && unit->getPowerByType(spellData.powerType) < spellData.manaCost) {
                         noMana = true;
                         usable = false;
                     }

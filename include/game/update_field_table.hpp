@@ -46,6 +46,7 @@ enum class UF : uint16_t {
     UNIT_FIELD_PETEXPERIENCE,   // A hunter pet's experience toward its next level
     UNIT_FIELD_PETNEXTLEVELEXP, // ...and what that level costs
     UNIT_FIELD_RESISTANCES,   // Physical armor (index 0 of the resistance array)
+    UNIT_FIELD_BASE_MANA,     // Mana before gear and stats, which percent costs are taken of
     UNIT_FIELD_STAT0,         // Strength (effective base, includes items)
     UNIT_FIELD_STAT1,         // Agility
     UNIT_FIELD_STAT2,         // Stamina
