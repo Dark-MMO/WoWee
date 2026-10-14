@@ -1080,12 +1080,8 @@ static int lua_UnitIsPossessed(lua_State* L) {
 /// Whether something else is driving this unit - the other end of the same
 /// relationship, in UNIT_FIELD_CHARMEDBY.
 ///
-/// Bound rather than left out because ToggleGameMenu reads it, and it used to
-/// survive there only by a short circuit: `ClearTarget() and (not
-/// UnitIsCharmed(...))` never reaches the second half because ClearTarget
-/// returns nothing. That is a fact about a neighbouring binding's return
-/// count, not about this one, and pressing Escape is not where anyone wants to
-/// find that out.
+/// ToggleGameMenu reads it on every Escape that clears a target:
+/// `ClearTarget() and (not UnitIsCharmed("player"))`.
 static int lua_UnitIsCharmed(lua_State* L) {
     auto* gh = getGameHandler(L);
     const char* uid = luaL_optstring(L, 1, "player");
