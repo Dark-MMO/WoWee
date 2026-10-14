@@ -965,10 +965,9 @@ void GameHandler::registerCoreOpcodes() {
 
     // Minimap ping
     dispatchTable_[Opcode::MSG_MINIMAP_PING] = [this](network::Packet& packet) {
-        const bool mmTbcLike = isPreWotlk();
-        if (!packet.hasRemaining(mmTbcLike ? 8u : 1u) ) return;
-        uint64_t senderGuid = mmTbcLike
-            ? packet.readUInt64() : packet.readPackedGuid();
+        // A full guid in every expansion; WotLK does not pack this one.
+        if (!packet.hasRemaining(8)) return;
+        uint64_t senderGuid = packet.readUInt64();
         if (!packet.hasRemaining(8)) return;
         float pingX = packet.readFloat();
         float pingY = packet.readFloat();
