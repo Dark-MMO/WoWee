@@ -29,6 +29,8 @@ constexpr uint32_t UNIT_FLAG_IN_COMBAT   = 0x00080000;
 /// summoner, and only the one the player steers answers to this.
 constexpr uint32_t UNIT_FLAG_PLAYER_CONTROLLED = 0x00000008;
 constexpr uint32_t UNIT_FLAG_NOT_SELECTABLE = 0x02000000;
+constexpr uint32_t UNIT_FLAG_NON_ATTACKABLE = 0x00000002;
+constexpr uint32_t UNIT_FLAG_IMMUNE_TO_PC   = 0x00000100;
 
 // Unit visibility flags (byte 2 of UNIT_FIELD_BYTES_1).
 // CREEP marks a unit using the client-side stealth presentation. The server

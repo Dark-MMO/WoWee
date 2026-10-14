@@ -1024,9 +1024,6 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
             // hostile. Match normal right-click combat by rejecting only
             // service NPCs and targets the server explicitly marks as
             // non-attackable/immune, rather than requiring hostile faction.
-            constexpr uint32_t UNIT_FLAG_NON_ATTACKABLE = 0x00000002;
-            constexpr uint32_t UNIT_FLAG_IMMUNE_TO_PC   = 0x00000100;
-            constexpr uint32_t UNIT_FLAG_NOT_SELECTABLE = 0x02000000;
             constexpr uint32_t kBlockedChargeFlags =
                 UNIT_FLAG_NON_ATTACKABLE |
                 UNIT_FLAG_IMMUNE_TO_PC |

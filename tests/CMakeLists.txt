@@ -2273,6 +2273,13 @@ wowee_add_test(test_auction_slot_filter
 wowee_add_test(test_binding_file
     SOURCES test_binding_file.cpp)
 
+# ── test_tab_target ──────────────────────────────────────────
+# Which units Tab and TargetNearestEnemy may pick: hostile and neutral alike,
+# but not friendly units, critters, or units the server marks unselectable,
+# unattackable or immune to players.
+wowee_add_test(test_tab_target
+    SOURCES test_tab_target.cpp)
+
 # ── test_player_model_path ───────────────────────────────────
 # Which body a character wears. Gender alone does not answer it: a nonbinary
 # character picks one, and the preview, the world spawn and the skin textures
