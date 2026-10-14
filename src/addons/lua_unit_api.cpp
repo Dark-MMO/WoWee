@@ -684,6 +684,21 @@ static int lua_UnitGroupRolesAssigned(lua_State* L) {
     return pushRoles(false, false, false);
 }
 
+/// Friendly is an answer of its own rather than "not hostile": neutral
+/// wildlife is neither, and can be attacked but not helped. A faction with a
+/// standing is friendly only from Friendly up, as the reaction says.
+static bool isFriendlyUnit(game::GameHandler* gh, const game::Unit& unit) {
+    return !unit.isHostile() && gh->unitReactionToPlayer(unit) >= 5;
+}
+
+/// Attackable unless its faction is friendly: neutral wildlife can be fought,
+/// a faction with a standing only while at war with it.
+static bool canAttackUnit(game::GameHandler* gh, const game::Unit& unit) {
+    return unit.isHostile() || !gh->isFriendlyFaction(unit.getFactionTemplate());
+}
+
+static game::Unit* unitAskedAbout(lua_State* L);
+
 // UnitCanAttack(unit, otherUnit) → boolean
 static int lua_UnitCanAttack(lua_State* L) {
     auto* gh = getGameHandler(L);
@@ -696,13 +711,8 @@ static int lua_UnitCanAttack(lua_State* L) {
     uint64_t g1 = resolveUnitGuid(gh, u1);
     uint64_t g2 = resolveUnitGuid(gh, u2);
     if (g1 == 0 || g2 == 0 || g1 == g2) { return luaReturnFalse(L); }
-    // Check if unit2 is hostile to unit1
-    auto* unit2 = resolveUnit(L, uid2);
-    if (unit2 && unit2->isHostile()) {
-        lua_pushboolean(L, 1);
-    } else {
-        lua_pushboolean(L, 0);
-    }
+    auto* unit = unitAskedAbout(L);
+    lua_pushboolean(L, unit && canAttackUnit(gh, *unit));
     return 1;
 }
 
@@ -714,7 +724,7 @@ static int lua_UnitCanCooperate(lua_State* L) {
     const char* uid2 = luaL_checkstring(L, 2);
     auto* unit2 = resolveUnit(L, uid2);
     if (!unit2) { return luaReturnFalse(L); }
-    lua_pushboolean(L, !unit2->isHostile());
+    lua_pushboolean(L, isFriendlyUnit(gh, *unit2));
     return 1;
 }
 
@@ -2132,8 +2142,9 @@ static game::Unit* unitAskedAbout(lua_State* L) {
 }
 
 static int lua_UnitIsFriend(lua_State* L) {
+    auto* gh = getGameHandler(L);
     auto* unit = unitAskedAbout(L);
-    lua_pushboolean(L, unit && !unit->isHostile());
+    lua_pushboolean(L, gh && unit && isFriendlyUnit(gh, *unit));
     return 1;
 }
 
@@ -2280,11 +2291,7 @@ static int lua_UnitReaction(lua_State* L) {
         lua_pushnumber(L, gh->unitReactionToPlayer(*unit1));
         return 1;
     }
-    if (unit2->isHostile()) {
-        lua_pushnumber(L, 2); // hostile
-    } else {
-        lua_pushnumber(L, 5); // friendly
-    }
+    lua_pushnumber(L, gh->unitReactionToPlayer(*unit2));
     return 1;
 }
 
@@ -2611,11 +2618,12 @@ void registerUnitLuaAPI(lua_State* L) {
             lua_pushboolean(L, (unit && unit->getHealth() == 0) ? 1 : 0);
             return 1;
         }},
-                // Whether the first unit may help the second - true between
-                // anything not hostile to each other.
+                // Whether the first unit may help the second - only a friendly
+                // one, never neutral wildlife.
                 {"UnitCanAssist", [](lua_State* L) -> int {
+            auto* gh = getGameHandler(L);
             auto* other = resolveUnit(L, luaL_optstring(L, 2, "target"));
-            lua_pushboolean(L, (other && !other->isHostile()) ? 1 : 0);
+            lua_pushboolean(L, (gh && other && isFriendlyUnit(gh, *other)) ? 1 : 0);
             return 1;
         }},
                 {"GetPVPRankInfo", [](lua_State* L) -> int {
