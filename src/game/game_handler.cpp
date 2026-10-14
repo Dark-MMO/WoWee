@@ -1,5 +1,6 @@
 #include "game/game_handler.hpp"
 #include "game/reputation_standing.hpp"
+#include "game/spell_classification.hpp"
 
 #include <set>
 
@@ -2840,6 +2841,19 @@ void GameHandler::loadFactionNameCache() const {
     }
     LOG_INFO("Faction.dbc: loaded ", factionNameCache_.size(), " faction names, ",
              factionRepListToId_.size(), " with reputation tracking");
+}
+
+GameHandler::SpellDataInfo GameHandler::getSpellData(uint32_t spellId) const {
+    SpellDataInfo info = spellDataResolver_ ? spellDataResolver_(spellId) : SpellDataInfo{};
+    if (info.manaCostPct == 0) return info;
+    auto player = std::dynamic_pointer_cast<Unit>(getEntityManager().getEntity(playerGuid));
+    if (!player) return info;
+    constexpr uint8_t kPowerMana = 0;
+    const uint32_t pool = info.powerType == kPowerMana
+        ? player->getField(fieldIndex(UF::UNIT_FIELD_BASE_MANA))
+        : player->getMaxPowerByType(info.powerType);
+    info.manaCost += spellclass::percentPowerCost(pool, info.manaCostPct);
+    return info;
 }
 
 int GameHandler::unitReactionToPlayer(const Unit& unit) const {

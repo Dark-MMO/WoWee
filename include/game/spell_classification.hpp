@@ -21,6 +21,13 @@ inline constexpr float kCombatRangeYards = 5.0f;
 /// Returned when SpellRange.dbc was unavailable - nothing may be inferred from it.
 inline constexpr float kUnknownRange = -1.0f;
 
+/// A cost given as a percent of a pool, as Spell.dbc writes every hunter shot:
+/// a share of base mana for mana spells, of the maximum for focus, rage and
+/// energy. Rounded down, as the server rounds it.
+inline uint32_t percentPowerCost(uint32_t pool, uint32_t percent) {
+    return static_cast<uint32_t>(static_cast<uint64_t>(pool) * percent / 100);
+}
+
 /// "Self Only" range: the spell cannot reach another unit, so it lands on the caster
 /// no matter what is targeted (shouts, self-buffs, hearthstone).
 inline bool isSelfCastRange(float maxRange) {
