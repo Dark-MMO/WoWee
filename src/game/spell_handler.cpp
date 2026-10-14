@@ -1150,10 +1150,18 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
         owner_.addonEventCallbackRef()("UNIT_SPELLCAST_SENT", {"player", targetName, std::to_string(spellId)});
     }
 
-    // Optimistically start GCD immediately on cast
+    // Optimistically start GCD immediately on cast. Nothing else announces this
+    // GCD, so without these the buttons are not asked again and the sweep for
+    // a spell with no cooldown of its own never draws.
     if (!isGCDActive()) {
         gcdTotal_ = 1.5f;
         gcdStartedAt_ = std::chrono::steady_clock::now();
+        optimisticGcdSpellId_ = spellId;
+        optimisticGcdCastCount_ = castCount_;
+        if (owner_.addonEventCallbackRef()) {
+            owner_.addonEventCallbackRef()("SPELL_UPDATE_COOLDOWN", {});
+            owner_.addonEventCallbackRef()("ACTIONBAR_UPDATE_COOLDOWN", {});
+        }
     }
 }
 
@@ -1710,6 +1718,20 @@ void SpellHandler::updateTimers(float dt) {
         owner_.addonEventCallbackRef()("SPELL_UPDATE_USABLE", {});
         owner_.addonEventCallbackRef()("SPELL_UPDATE_COOLDOWN", {});
     }
+    // A cast starts, finishes, fails or is interrupted along a dozen paths, and
+    // the swing toggles along its own; the buttons only redraw their checked
+    // state on ACTIONBAR_UPDATE_STATE. Comparing here announces each change
+    // once, within the frame, whichever path made it.
+    const uint32_t castNow = casting_ ? currentCastSpellId_ : 0;
+    const bool swingNow = owner_.isAutoAttacking();
+    if ((castNow != announcedCastSpellId_ || swingNow != announcedAutoAttack_) &&
+        owner_.addonEventCallbackRef()) {
+        const bool castChanged = castNow != announcedCastSpellId_;
+        announcedCastSpellId_ = castNow;
+        announcedAutoAttack_ = swingNow;
+        owner_.addonEventCallbackRef()("ACTIONBAR_UPDATE_STATE", {});
+        if (castChanged) owner_.addonEventCallbackRef()("CURRENT_SPELL_CAST_CHANGED", {});
+    }
     // Tick down unit cast states
     for (auto it = unitCastStates_.begin(); it != unitCastStates_.end(); ) {
         if (it->second.casting && it->second.timeRemaining > 0.0f) {
@@ -1922,6 +1944,17 @@ void SpellHandler::handleCastFailed(network::Packet& packet) {
             owner_.addonEventCallbackRef()("STOP_AUTOREPEAT_SPELL", {});
         }
     }
+    // The server cancels the GCD of a cast it refuses, so the guess goes too.
+    // Not for a refused press during it: that press started no GCD.
+    if (data.spellId == optimisticGcdSpellId_ && isGCDActive() &&
+        answersPress(data, optimisticGcdCastCount_)) {
+        gcdTotal_ = 0.0f;
+        optimisticGcdSpellId_ = 0;
+        if (owner_.addonEventCallbackRef()) {
+            owner_.addonEventCallbackRef()("SPELL_UPDATE_COOLDOWN", {});
+            owner_.addonEventCallbackRef()("ACTIONBAR_UPDATE_COOLDOWN", {});
+        }
+    }
     owner_.lastInteractedGoGuidRef() = 0;
     owner_.pendingGameObjectInteractGuidRef() = 0;
     craftQueueSpellId_ = 0;
@@ -2044,7 +2077,6 @@ void SpellHandler::handleSpellStart(network::Packet& packet) {
         currentCastSpellId_ = data.spellId;
         castTimeTotal_ = data.castTime / 1000.0f;
         castTimeRemaining_ = castTimeTotal_;
-        if (owner_.addonEventCallbackRef()) owner_.addonEventCallbackRef()("CURRENT_SPELL_CAST_CHANGED", {});
 
         // Play precast sound - skip profession/tradeskill spells
         if (!owner_.isProfessionSpell(data.spellId)) {

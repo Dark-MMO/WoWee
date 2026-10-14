@@ -167,6 +167,10 @@ endfunction()
 wowee_add_test(test_sell_count
     SOURCES test_sell_count.cpp)
 
+# Which action bar spell IsCurrentAction reports. Header-only, no game state.
+wowee_add_test(test_current_action
+    SOURCES test_current_action.cpp)
+
 # Stock-style hill climbing regression test. Run directly with:
 #   cmake --build build --target test_hill_climbing && ctest --test-dir build -R hill_climbing
 wowee_add_test(test_hill_climbing
