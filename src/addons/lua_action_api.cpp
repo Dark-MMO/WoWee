@@ -8,6 +8,8 @@
 #include "game/inventory_slots.hpp"
 #include "ui/framexml_takeover.hpp"
 #include "ui/keybinding_manager.hpp"
+#include "ui/settings_panel.hpp"
+#include "addons/binding_file.hpp"
 #include "ui/gamepad_controls.hpp"
 
 #include <span>
@@ -1653,11 +1655,42 @@ std::optional<std::string> liveKeyFor(const std::string& command) {
     return std::nullopt;
 }
 
+/// What SaveBindings wrote, over whatever is in the map. `pushLive` also hands
+/// the client's own commands to its manager; at start-up it does not, because
+/// the manager keeps those keys itself and a rebind made in the client's
+/// settings panel is newer than this file.
+void applySavedBindings(bool pushLive) {
+    std::ifstream in(bindingsFilePath());
+    if (!in) return;   // Nothing saved yet is not a failure.
+    for (const auto& [command, saved] : wowee::addons::parseSavedBindings(in)) {
+        if (!pushLive && liveKeyFor(command)) continue;
+        bindingKeys()[command] = saved;
+        if (pushLive) pushBindingToClient(command, saved[0]);
+    }
+    if (pushLive) return;
+    // The manager's keys win, so none of them may also sit on another command:
+    // GetBindingAction would answer with whichever the map holds first.
+    for (const auto& live : kLiveBindings) {
+        const auto key = liveKeyFor(live.command);
+        if (!key) continue;
+        for (auto& [command, slots] : bindingKeys()) {
+            if (command == live.command) continue;
+            for (auto& slot : slots) {
+                if (slot == *key) slot.clear();
+            }
+        }
+    }
+}
+
 /// The keys the client is actually listening for, asked of the manager that
 /// listens rather than restated here - a second copy would be wrong the moment
 /// either side moved. Commands the client has no action for keep their retail
 /// default, so the list reads correctly even where nothing acts on it yet.
-void seedBindingDefaults() {
+///
+/// Then what the player saved, unless only the defaults are wanted: this is
+/// the first thing any binding lookup calls, so it is also where a binding
+/// made in an earlier session comes back.
+void seedBindingDefaults(bool withSaved = true) {
     auto& keys = bindingKeys();
     if (!keys.empty()) return;
 
@@ -1716,6 +1749,8 @@ void seedBindingDefaults() {
     };
     seedPad(wowee::ui::padBindings());
     seedPad(wowee::ui::padExtraBindings());
+
+    if (withSaved) applySavedBindings(false);
 }
 
 /// The command list the emitter built, or zero if bindings.xml never loaded.
@@ -1903,31 +1938,34 @@ static int lua_SaveBindings(lua_State* L) {
         // so a command that lost one is recorded as having lost it.
         out << command << "=" << keys[0] << "," << keys[1] << "\n";
     }
+    // The commands the client's own manager answers are saved by it too, so
+    // the two files never disagree about a key on the next start.
+    wowee::ui::KeybindingManager::getInstance().saveToConfigFile(
+        wowee::ui::SettingsPanel::getSettingsPath());
     return 0;
 }
 
-// LoadBindings(which) → what a previous run saved, over the defaults
+// LoadBindings(which) → the defaults for DEFAULT_BINDINGS (0), otherwise what
+// a previous run saved over them. The key binding panel's Default button
+// passes 0 and its Cancel passes the current set.
 static int lua_LoadBindings(lua_State* L) {
-    (void)L;
-    seedBindingDefaults();
-    std::ifstream in(bindingsFilePath());
-    if (!in) return 0;   // Nothing saved yet is not a failure.
-    std::string line;
-    while (std::getline(in, line)) {
-        const size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        const std::string command = line.substr(0, eq);
-        const std::string rest = line.substr(eq + 1);
-        const size_t comma = rest.find(',');
-        bindingKeys()[command] = {
-            rest.substr(0, comma),
-            comma == std::string::npos ? "" : rest.substr(comma + 1)
-        };
-        // What was saved is what the client should answer to, not what it
-        // started with - otherwise a rebind survives in the list and nowhere
-        // else, and only until the next save overwrites it.
-        pushBindingToClient(command, bindingKeys()[command][0]);
+    const bool defaultsOnly = luaL_optinteger(L, 1, 1) == 0;
+    auto& manager = wowee::ui::KeybindingManager::getInstance();
+    if (defaultsOnly) {
+        for (const auto& live : kLiveBindings) {
+            manager.setKeyForAction(live.action, manager.getDefaultKeyForAction(live.action));
+        }
+    } else {
+        // Back to what was last saved, including what this panel changed in
+        // the client's own manager since.
+        manager.loadFromConfigFile(wowee::ui::SettingsPanel::getSettingsPath());
     }
+    bindingKeys().clear();
+    seedBindingDefaults(false);
+    // What was saved is what the client should answer to, not what it
+    // started with - otherwise a rebind survives in the list and nowhere
+    // else, and only until the next save overwrites it.
+    if (!defaultsOnly) applySavedBindings(true);
     if (auto* gh = getGameHandler(L)) gh->fireAddonEvent("UPDATE_BINDINGS", {});
     return 0;
 }

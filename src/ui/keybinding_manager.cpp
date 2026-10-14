@@ -134,6 +134,10 @@ ImGuiKey KeybindingManager::getKeyForAction(Action action) const {
     return it->second;
 }
 
+ImGuiKey KeybindingManager::getDefaultKeyForAction(Action action) const {
+    return KeybindingManager{}.getKeyForAction(action);
+}
+
 void KeybindingManager::setKeyForAction(Action action, ImGuiKey key) {
     // Reserve movement keys so they cannot be used as UI shortcuts.
     (void)action;

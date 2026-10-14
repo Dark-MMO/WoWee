@@ -2267,6 +2267,12 @@ wowee_add_test(test_auction_slot_filter
     SOURCES test_auction_slot_filter.cpp
             ${TEST_COMMON_SOURCES})
 
+# ── test_binding_file ────────────────────────────────────────
+# The saved key bindings file the key binding panel writes and every start
+# reads back.
+wowee_add_test(test_binding_file
+    SOURCES test_binding_file.cpp)
+
 # ── test_player_model_path ───────────────────────────────────
 # Which body a character wears. Gender alone does not answer it: a nonbinary
 # character picks one, and the preview, the world spawn and the skin textures
