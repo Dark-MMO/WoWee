@@ -1016,26 +1016,12 @@ void QuestHandler::registerOpcodes(DispatchTable& table) {
     // ---- SMSG_QUEST_FORCE_REMOVE ----
     table[Opcode::SMSG_QUEST_FORCE_REMOVE] = [this](network::Packet& packet) {
         if (!packet.hasRemaining(4)) {
-            LOG_WARNING("SMSG_QUEST_FORCE_REMOVE/SET_REST_START too short");
+            LOG_WARNING("SMSG_QUEST_FORCE_REMOVE too short");
             return;
         }
-        uint32_t value = packet.readUInt32();
-
-        // WotLK uses this opcode as SMSG_SET_REST_START
-        if (!isClassicLikeExpansion() && !isActiveExpansion("tbc")) {
-            bool nowResting = (value != 0);
-            if (nowResting != owner_.isRestingRef()) {
-                owner_.isRestingRef() = nowResting;
-                owner_.addSystemChatMessage(owner_.isRestingRef() ? "You are now resting."
-                                                              : "You are no longer resting.");
-                if (owner_.addonEventCallbackRef())
-                    owner_.addonEventCallbackRef()("PLAYER_UPDATE_RESTING", {});
-            }
-            return;
-        }
-
-        // Classic/TBC: treat as QUEST_FORCE_REMOVE (uint32 questId)
-        uint32_t questId = value;
+        // A quest the server dropped from the log (uint32 questId). Resting is
+        // not read from here: it comes from PLAYER_FLAGS_RESTING.
+        uint32_t questId = packet.readUInt32();
         clearPendingQuestAccept(questId);
         pendingQuestQueryIds_.erase(questId);
         if (questId == 0) {
