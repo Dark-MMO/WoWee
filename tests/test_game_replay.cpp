@@ -2,11 +2,17 @@
 #include <catch_amalgamated.hpp>
 
 #include "game_replay.hpp"
+#include "addons/lua_api_registrations.hpp"
 #include "game/entity.hpp"
 #include "game/game_utils.hpp"
 #include "game/packed_time.hpp"
 
 #include <memory>
+
+extern "C" {
+#include "lauxlib.h"
+#include "lua.h"
+}
 
 using replay::Session;
 using replay::UpdateObject;
@@ -78,4 +84,53 @@ TEST_CASE("the login time sets the game clock", "[replay]") {
     s.receive(p);
 
     CHECK(s.handler().getGameTime() == Catch::Approx(13.5f).margin(0.01f));
+}
+
+namespace {
+
+constexpr uint64_t kPet = 0xF140000000000051ull;
+
+// Player::PetSpellInitialize up to the spell count: guid, family, duration,
+// react and command states, flags, the ten action bar slots.
+wowee::network::Packet petSpells(uint64_t pet) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_PET_SPELLS));
+    p.writeUInt64(pet);
+    p.writeUInt16(0);
+    p.writeUInt32(0);
+    p.writeUInt8(1);
+    p.writeUInt8(1);
+    p.writeUInt16(0);
+    for (int i = 0; i < 10; ++i) p.writeUInt32(0);
+    p.writeUInt8(0);
+    return p;
+}
+
+bool petCanBeAbandoned(Session& s) {
+    lua_State* L = luaL_newstate();
+    lua_pushlightuserdata(L, &s.handler());
+    lua_setfield(L, LUA_REGISTRYINDEX, "wowee_game_handler");
+    wowee::addons::registerUnitLuaAPI(L);
+    REQUIRE(luaL_dostring(L, "return PetCanBeAbandoned()") == 0);
+    const bool result = lua_toboolean(L, -1) != 0;
+    lua_close(L);
+    return result;
+}
+
+}  // namespace
+
+// Pet::CreateBaseAtTamed and Pet::LoadPetFromDB set UNIT_CAN_BE_ABANDONED
+// (0x02) in UNIT_FIELD_BYTES_2 byte 2 on a hunter's beast, and nothing else
+// sets it.
+TEST_CASE("PetCanBeAbandoned is true for a tamed pet only", "[replay]") {
+    for (const bool tamed : {true, false}) {
+        Session s;
+        s.spawnPlayer({{UF::UNIT_FIELD_LEVEL, 10}});
+        s.receive(UpdateObject().create(
+            kPet, wowee::game::ObjectType::UNIT,
+            {{UF::UNIT_FIELD_HEALTH, 100}, {UF::UNIT_FIELD_BYTES_2, tamed ? 0x03u << 16 : 0u}}));
+        s.receive(petSpells(kPet));
+        REQUIRE(s.handler().getPetGuid() == kPet);
+
+        CHECK(petCanBeAbandoned(s) == tamed);
+    }
 }
