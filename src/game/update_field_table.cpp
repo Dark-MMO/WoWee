@@ -25,6 +25,7 @@ static const UFNameEntry kUFNames[] = {
     {.name = "UNIT_FIELD_TARGET_HI", .field = UF::UNIT_FIELD_TARGET_HI},
     {.name = "UNIT_FIELD_BYTES_0", .field = UF::UNIT_FIELD_BYTES_0},
     {.name = "UNIT_FIELD_BYTES_1", .field = UF::UNIT_FIELD_BYTES_1},
+    {.name = "UNIT_FIELD_BYTES_2", .field = UF::UNIT_FIELD_BYTES_2},
     {.name = "UNIT_FIELD_HEALTH", .field = UF::UNIT_FIELD_HEALTH},
     {.name = "UNIT_FIELD_POWER1", .field = UF::UNIT_FIELD_POWER1},
     {.name = "UNIT_FIELD_MAXHEALTH", .field = UF::UNIT_FIELD_MAXHEALTH},
