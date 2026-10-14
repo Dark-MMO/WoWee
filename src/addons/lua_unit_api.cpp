@@ -2002,6 +2002,17 @@ static int lua_GetNumPartyMembers(lua_State* L) {
     return 1;
 }
 
+// GetPartyMember(index) → 1 when that party slot is filled. The party frames
+// show and hide on it.
+static int lua_GetPartyMember(lua_State* L) {
+    auto* gh = getGameHandler(L);
+    const int index = static_cast<int>(luaL_checkinteger(L, 1));
+    if (!gh || index < 1 || index > 4) { return luaReturnNil(L); }
+    if (resolveUnitGuid(gh, "party" + std::to_string(index)) == 0) { return luaReturnNil(L); }
+    lua_pushnumber(L, 1);
+    return 1;
+}
+
 static int lua_UnitInParty(lua_State* L) {
     const char* uid = luaL_optstring(L, 1, "player");
     auto* gh = getGameHandler(L);
@@ -2978,6 +2989,7 @@ void registerUnitLuaAPI(lua_State* L) {
                 {"UnitAffectingCombat", lua_UnitAffectingCombat},
                 {"GetNumRaidMembers",   lua_GetNumRaidMembers},
                 {"GetNumPartyMembers",  lua_GetNumPartyMembers},
+                {"GetPartyMember",      lua_GetPartyMember},
                 // The counts before the dungeon finder inflates them. There is
                 // no dungeon finder here, so they are the same number - and
                 // UIParent does arithmetic on them, where absent is an error
