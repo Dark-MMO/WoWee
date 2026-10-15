@@ -338,6 +338,20 @@ wowee_test_link_glm(test_lua_generic_for)
 add_test(NAME lua_generic_for COMMAND test_lua_generic_for)
 register_test_target(test_lua_generic_for)
 
+# ── test_lua_bit_lib ────────────────────────────────────────
+# WoW's bit library, which this client supplies in Lua. FrameXML builds its
+# combat log masks with five-argument bit.bor calls.
+add_executable(test_lua_bit_lib
+    test_lua_bit_lib.cpp
+)
+target_include_directories(test_lua_bit_lib PRIVATE ${TEST_INCLUDE_DIRS})
+target_include_directories(test_lua_bit_lib SYSTEM PRIVATE
+    ${TEST_SYSTEM_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/extern/lua-5.1.5/src)
+target_link_libraries(test_lua_bit_lib PRIVATE catch2_main lua51)
+wowee_test_link_glm(test_lua_bit_lib)
+add_test(NAME lua_bit_lib COMMAND test_lua_bit_lib)
+register_test_target(test_lua_bit_lib)
+
 # ── test_lua_arg_coercion ───────────────────────────────────
 # The lenient numeric argument, which is a pure function of the Lua stack and
 # so needs no game, window or interface - while the fault it prevents is
