@@ -778,7 +778,9 @@ void QuestHandler::registerOpcodes(DispatchTable& table) {
         if (rem >= 12) {
             uint32_t questId = packet.readUInt32();
             clearPendingQuestAccept(questId);
-            uint32_t entry = normalizeQuestObjectiveEntry(packet.readUInt32());
+            const uint32_t wireEntry = packet.readUInt32();
+            const bool isObject = (wireEntry & 0x80000000u) != 0;
+            uint32_t entry = normalizeQuestObjectiveEntry(wireEntry);
             uint32_t count = packet.readUInt32();
             uint32_t reqCount = 0;
             if (packet.hasRemaining(4)) {
@@ -813,13 +815,16 @@ void QuestHandler::registerOpcodes(DispatchTable& table) {
                     count = std::min(count, reqCount);
                     quest.killCounts[entry] = {count, reqCount};
 
-                    std::string creatureName = owner_.getCachedCreatureName(entry);
-                    std::string progressMsg = quest.title + ": ";
-                    if (!creatureName.empty()) {
-                        progressMsg += creatureName + " ";
+                    std::string creatureName;
+                    if (!isObject) {
+                        creatureName = owner_.getCachedCreatureName(entry);
+                    } else if (const auto* go = owner_.getCachedGameObjectInfo(entry)) {
+                        creatureName = go->name;
                     }
-                    progressMsg += std::to_string(count) + "/" + std::to_string(reqCount);
-                    owner_.addSystemChatMessage(progressMsg);
+                    // ERR_QUEST_ADD_KILL_SII and ERR_QUEST_ADD_FOUND_SII, in the
+                    // middle of the screen where the game shows them.
+                    owner_.addUIInfoMessage(
+                        questObjectiveLine(creatureName, isObject, count, reqCount));
 
                     if (owner_.questProgressCallbackRef()) {
                         owner_.questProgressCallbackRef()(quest.title, creatureName, count, reqCount);
@@ -1285,9 +1290,8 @@ void QuestHandler::registerOpcodes(DispatchTable& table) {
                 count = std::min(count, reqCount);
                 quest.killCounts[PVP_KILL_ENTRY] = {count, reqCount};
 
-                std::string progressMsg = quest.title + ": PvP kills " +
-                    std::to_string(count) + "/" + std::to_string(reqCount);
-                owner_.addSystemChatMessage(progressMsg);
+                owner_.addUIInfoMessage("Players slain: " + std::to_string(count) + "/" +
+                                        std::to_string(reqCount));
                 break;
             }
         }

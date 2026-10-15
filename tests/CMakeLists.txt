@@ -2556,7 +2556,7 @@ wowee_add_test(test_pass_ablation
 # The filter drops main by the object names Makefiles, Ninja, Xcode and Visual
 # Studio give it; src/main.cpp is the only file of that name in the client.
 if(NOT ANDROID)
-    add_executable(test_game_replay test_game_replay.cpp
+    add_executable(test_game_replay test_game_replay.cpp test_game_replay_quests.cpp
         "$<FILTER:$<TARGET_OBJECTS:wowee>,EXCLUDE,/main([.]cpp)?[.]o(bj)?$>")
     target_include_directories(test_game_replay PRIVATE ${TEST_INCLUDE_DIRS}
         $<TARGET_PROPERTY:wowee,INCLUDE_DIRECTORIES>)
