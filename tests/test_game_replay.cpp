@@ -464,6 +464,19 @@ wowee::network::Packet spellStart(uint8_t castCount, uint32_t spellId, uint32_t 
     return p;
 }
 
+namespace {
+
+bool petCanBeRenamed(Session& s) {
+    lua_State* L = luaL_newstate();
+    lua_pushlightuserdata(L, &s.handler());
+    lua_setfield(L, LUA_REGISTRYINDEX, "wowee_game_handler");
+    wowee::addons::registerSocialLuaAPI(L);
+    REQUIRE(luaL_dostring(L, "return PetCanBeRenamed()") == 0);
+    const bool result = lua_toboolean(L, -1) != 0;
+    lua_close(L);
+    return result;
+}
+
 }  // namespace
 
 // Spell::SendCastResult writes the press's castCount; the server's own casts,
@@ -497,4 +510,19 @@ TEST_CASE("a refused second press leaves the queued swing ability lit", "[replay
 
     s.receive(castFailed(queued, kRaptorStrike, kOutOfRange));
     CHECK(s.handler().getActiveActionSpellId() == 0);
+}
+
+// Pet::LoadPetFromDB sets UNIT_CAN_BE_RENAMED (0x01) beside
+// UNIT_CAN_BE_ABANDONED only on a pet never named, and
+// WorldSession::HandlePetRename clears it.
+TEST_CASE("PetCanBeRenamed follows the pet's rename flag", "[replay]") {
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_LEVEL, 10}});
+    s.receive(UpdateObject().create(kPet, wowee::game::ObjectType::UNIT,
+                                    {{UF::UNIT_FIELD_HEALTH, 100}, {UF::UNIT_FIELD_BYTES_2, 0x03u << 16}}));
+    s.receive(petSpells(kPet));
+    CHECK(petCanBeRenamed(s));
+
+    s.receive(UpdateObject().values(kPet, {{UF::UNIT_FIELD_BYTES_2, 0x02u << 16}}));
+    CHECK_FALSE(petCanBeRenamed(s));
 }

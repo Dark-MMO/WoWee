@@ -1066,7 +1066,7 @@ public:
     /// The same flag without taking it. The unit menu asks whether a rename is
     /// offered every time it is built, and consuming there would spend the one
     /// answer this client's own naming dialog is waiting for.
-    bool isPetRenameable() const { return petRenameablePending_; }
+    bool isPetRenameable() const;
     uint64_t getPetGuid() const { return petGuid_; }
 
     // ---- Pet state (populated by SMSG_PET_SPELLS / SMSG_PET_MODE) ----
