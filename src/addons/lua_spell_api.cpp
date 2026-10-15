@@ -1306,7 +1306,11 @@ void registerSpellLuaAPI(lua_State* L) {
             return 1;
         }},
                 {"IsAutoRepeatSpell", [](lua_State* L) -> int {
-            (void)L; lua_pushboolean(L, 0); return 1; // Stub
+            auto* gh = getGameHandler(L);
+            const char* name = luaL_optstring(L, 1, "");
+            const uint32_t active = gh ? gh->getAutoRepeatSpellId() : 0;
+            lua_pushboolean(L, active != 0 && gh->getSpellName(active) == name);
+            return 1;
         }},
                 {"CastShapeshiftForm", [](lua_State* L) -> int {
             // CastShapeshiftForm(index) - cast the spell for the given form slot

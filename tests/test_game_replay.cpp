@@ -19,6 +19,43 @@ std::shared_ptr<wowee::game::Unit> playerUnit(Session& s) {
         s.handler().getEntityManager().getEntity(Session::kPlayerGuid));
 }
 
+constexpr uint32_t kAutoShot = 75;
+constexpr uint64_t kMob = 0xF130000000000123ull;
+constexpr uint64_t kOtherHunter = 0x0000000000000077ull;
+
+// A hunter in the world with a mob to shoot.
+void huntMob(Session& s) {
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 181}, {UF::UNIT_FIELD_LEVEL, 9}});
+    s.receive(UpdateObject().create(kMob, wowee::game::ObjectType::UNIT,
+                                    {{UF::UNIT_FIELD_HEALTH, 100}, {UF::UNIT_FIELD_LEVEL, 8}}));
+}
+
+// The castCount CMSG_CAST_SPELL carried on the latest press, its first byte.
+uint8_t lastCastCount(const Session& s) {
+    auto casts = s.sent().of(wowee::game::Opcode::CMSG_CAST_SPELL);
+    REQUIRE_FALSE(casts.empty());
+    return casts.back().getData().at(0);
+}
+
+// Spell::SendCastResult: castCount, spellId, result.
+wowee::network::Packet castFailed(uint8_t castCount, uint32_t spellId, uint8_t result) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_CAST_FAILED));
+    p.writeUInt8(castCount);
+    p.writeUInt32(spellId);
+    p.writeUInt8(result);
+    return p;
+}
+
+// Player::SendAutoRepeatCancel: the shooter's packed guid, to everyone nearby.
+wowee::network::Packet autoRepeatCancelled(uint64_t shooter) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_CANCEL_AUTO_REPEAT));
+    p.writePackedGuid(shooter);
+    return p;
+}
+
+constexpr uint8_t kNotReady = 67;
+constexpr uint8_t kOutOfRange = 97;
+
 }  // namespace
 
 TEST_CASE("the session speaks WotLK", "[replay]") {
@@ -78,4 +115,37 @@ TEST_CASE("the login time sets the game clock", "[replay]") {
     s.receive(p);
 
     CHECK(s.handler().getGameTime() == Catch::Approx(13.5f).margin(0.01f));
+}
+
+TEST_CASE("a refused Auto Shot press stops the repeat it started", "[replay]") {
+    Session s;
+    huntMob(s);
+    s.handler().castSpell(kAutoShot, kMob);
+    REQUIRE(s.handler().getAutoRepeatSpellId() == kAutoShot);
+
+    s.receive(castFailed(lastCastCount(s), kAutoShot, kOutOfRange));
+    CHECK(s.handler().getAutoRepeatSpellId() == 0);
+}
+
+TEST_CASE("a refused second Auto Shot press leaves the first one repeating", "[replay]") {
+    Session s;
+    huntMob(s);
+    s.handler().castSpell(kAutoShot, kMob);
+    s.handler().castSpell(kAutoShot, kMob);
+
+    s.receive(castFailed(lastCastCount(s), kAutoShot, kNotReady));
+    CHECK(s.handler().getAutoRepeatSpellId() == kAutoShot);
+}
+
+// Unit::InterruptSpell sends it for whoever stopped shooting.
+TEST_CASE("only the player's own auto repeat cancel stops Auto Shot", "[replay]") {
+    Session s;
+    huntMob(s);
+    s.handler().castSpell(kAutoShot, kMob);
+
+    s.receive(autoRepeatCancelled(kOtherHunter));
+    CHECK(s.handler().getAutoRepeatSpellId() == kAutoShot);
+
+    s.receive(autoRepeatCancelled(Session::kPlayerGuid));
+    CHECK(s.handler().getAutoRepeatSpellId() == 0);
 }

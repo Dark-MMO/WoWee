@@ -14,8 +14,8 @@
 // The packets are built by hand, field by field as the server writes them;
 // each test says which server function it copies.
 //
-// There is no socket: whatever the client would send in answer goes nowhere,
-// and isInWorld(), which asks for one, stays false.
+// The socket is never connected; it only keeps what the client sends, for a
+// test to read back.
 
 #include <catch_amalgamated.hpp>
 
@@ -26,11 +26,13 @@
 #include "game/opcode_table.hpp"
 #include "game/update_field_table.hpp"
 #include "network/packet.hpp"
+#include "network/world_socket.hpp"
 
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace wowee {
 namespace game {
@@ -50,6 +52,9 @@ struct GameHandlerTestAccess {
         REQUIRE_FALSE(pending());
     }
     static void enterWorld(GameHandler& gh) { gh.setState(WorldState::IN_WORLD); }
+    static void setSocket(GameHandler& gh, std::unique_ptr<network::WorldSocket> socket) {
+        gh.socket = std::move(socket);
+    }
     static void setExpansions(core::Application& app, std::unique_ptr<ExpansionRegistry> registry) {
         app.expansionRegistry_ = std::move(registry);
     }
@@ -131,6 +136,23 @@ private:
     wowee::network::Packet body_;
 };
 
+// Keeps what the client sends instead of writing it anywhere.
+class SentPackets : public wowee::network::WorldSocket {
+public:
+    void send(const wowee::network::Packet& packet) override { sent_.push_back(packet); }
+
+    // Everything sent with this opcode, oldest first.
+    [[nodiscard]] std::vector<wowee::network::Packet> of(Opcode opcode) const {
+        std::vector<wowee::network::Packet> found;
+        for (const auto& p : sent_)
+            if (p.getOpcode() == wowee::game::wireOpcode(opcode)) found.push_back(p);
+        return found;
+    }
+
+private:
+    std::vector<wowee::network::Packet> sent_;
+};
+
 // A client in the world as one WotLK character, ready for packets.
 class Session {
 public:
@@ -147,10 +169,14 @@ public:
         REQUIRE(handler_.getOpcodeTable().loadFromJson(dir + "/opcodes.json"));
         REQUIRE(handler_.getUpdateFieldTable().loadFromJson(dir + "/update_fields.json"));
         handler_.setPlayerGuid(kPlayerGuid);
+        auto socket = std::make_unique<SentPackets>();
+        sent_ = socket.get();
+        wowee::game::GameHandlerTestAccess::setSocket(handler_, std::move(socket));
         wowee::game::GameHandlerTestAccess::enterWorld(handler_);
     }
 
     wowee::game::GameHandler& handler() { return handler_; }
+    const SentPackets& sent() const { return *sent_; }
 
     void receive(const wowee::network::Packet& packet) {
         wowee::game::GameHandlerTestAccess::receive(handler_, packet);
@@ -169,6 +195,7 @@ private:
     wowee::core::Application app_;
     wowee::game::GameServices services_;
     wowee::game::GameHandler handler_;
+    SentPackets* sent_ = nullptr;
 };
 
 }  // namespace replay

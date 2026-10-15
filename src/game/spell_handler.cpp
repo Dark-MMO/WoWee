@@ -710,14 +710,6 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
     LOG_DEBUG("castSpell: spellId=", spellId, " target=0x", std::hex, targetGuid, std::dec);
     if (owner_.getState() != WorldState::IN_WORLD || !owner_.getSocket()) return;
 
-    // Auto Shot and the wand's Shoot keep going once started, and the action
-    // button flashes for as long as they do. The stop half comes from the
-    // server on SMSG_CANCEL_AUTO_REPEAT; this is the start.
-    constexpr uint32_t kAutoShot = 75, kShoot = 5019;
-    if ((spellId == kAutoShot || spellId == kShoot) && owner_.addonEventCallbackRef()) {
-        owner_.addonEventCallbackRef()("START_AUTOREPEAT_SPELL", {});
-    }
-
     // Food and water are server auras, but using any action interrupts them.
     // Cancel the aura and stand first, then allow the requested action to proceed.
     if (restorationActive_) cancelCast();
@@ -1136,6 +1128,20 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
               " castCount=", static_cast<int>(castCount_), " packetSize=", packet.getSize());
     owner_.getSocket()->send(packet);
     LOG_INFO("Casting spell: ", spellId, " on 0x", std::hex, target, std::dec);
+
+    // Auto Shot and the wand's Shoot keep going once started, and the action
+    // button flashes for as long as they do. Only once the cast is sent: a
+    // press refused above never reaches the server, so nothing would stop it.
+    // The stop half comes from the server on SMSG_CANCEL_AUTO_REPEAT. A press
+    // while it already runs starts nothing, and the server ignores it.
+    constexpr uint32_t kAutoShot = 75, kShoot = 5019;
+    if ((spellId == kAutoShot || spellId == kShoot) && autoRepeatSpellId_ != spellId) {
+        autoRepeatSpellId_ = spellId;
+        autoRepeatCastCount_ = castCount_;
+        if (owner_.addonEventCallbackRef()) {
+            owner_.addonEventCallbackRef()("START_AUTOREPEAT_SPELL", {});
+        }
+    }
 
     // Fire UNIT_SPELLCAST_SENT for cast bar addons
     if (owner_.addonEventCallbackRef()) {
@@ -1877,6 +1883,13 @@ void SpellHandler::handleInitialSpells(network::Packet& packet) {
     }
 }
 
+// Whether a refusal answers the press sent with castCount. WotLK and TBC
+// echo the press's castCount; Classic echoes nothing, so there a refusal is
+// taken to answer the latest press.
+bool SpellHandler::answersPress(const CastFailedData& data, uint8_t castCount) const {
+    return isClassicLikeExpansion() ? castCount_ == castCount : data.castCount == castCount;
+}
+
 void SpellHandler::handleCastFailed(network::Packet& packet) {
     CastFailedData data;
     bool ok = owner_.getPacketParsers() ? owner_.getPacketParsers()->parseCastFailed(packet, data)
@@ -1899,6 +1912,16 @@ void SpellHandler::handleCastFailed(network::Packet& packet) {
     castIsChannel_ = false;
     currentCastSpellId_ = 0;
     castTimeRemaining_ = 0.0f;
+    // Refused before it ever repeated, so the start announced on the press
+    // needs its stop: the server only cancels a repeat that was running. A
+    // refused later press leaves the running one alone.
+    if (data.spellId != 0 && data.spellId == autoRepeatSpellId_ &&
+        answersPress(data, autoRepeatCastCount_)) {
+        autoRepeatSpellId_ = 0;
+        if (owner_.addonEventCallbackRef()) {
+            owner_.addonEventCallbackRef()("STOP_AUTOREPEAT_SPELL", {});
+        }
+    }
     owner_.lastInteractedGoGuidRef() = 0;
     owner_.pendingGameObjectInteractGuidRef() = 0;
     craftQueueSpellId_ = 0;
@@ -3082,6 +3105,7 @@ void SpellHandler::resetCastState() {
 }
 
 void SpellHandler::resetAllState() {
+    autoRepeatSpellId_ = 0;
     knownSpells_.clear();
     spellCooldowns_.clear();
     spellCooldownTotals_.clear();
