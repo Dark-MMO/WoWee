@@ -1122,9 +1122,13 @@ void SpellHandler::castSpell(uint32_t spellId, uint64_t targetGuid) {
         return;
     }
 
+    // Never 0: the server's own casts, such as each Auto Shot after the
+    // first, are refused with castCount 0, and no press of ours may look like
+    // one of them.
+    if (++castCount_ == 0) ++castCount_;
     auto packet = owner_.getPacketParsers()
-        ? owner_.getPacketParsers()->buildCastSpell(spellId, target, ++castCount_)
-        : CastSpellPacket::build(spellId, target, ++castCount_);
+        ? owner_.getPacketParsers()->buildCastSpell(spellId, target, castCount_)
+        : CastSpellPacket::build(spellId, target, castCount_);
     LOG_DEBUG("CMSG_CAST_SPELL: spellId=", spellId, " target=0x", std::hex, target, std::dec,
               " castCount=", static_cast<int>(castCount_), " packetSize=", packet.getSize());
     owner_.getSocket()->send(packet);
@@ -1938,7 +1942,9 @@ void SpellHandler::handleCastFailed(network::Packet& packet) {
     casting_ = false;
     castIsChannel_ = false;
     currentCastSpellId_ = 0;
-    if (data.spellId == nextSwingSpellId_) nextSwingSpellId_ = 0;
+    // Only the refusal of the press that queued it: pressing it again while it
+    // waits for the swing is refused, and the first is still queued.
+    if (data.spellId == nextSwingSpellId_ && answersPress(data, nextSwingCastCount_)) nextSwingSpellId_ = 0;
     castTimeRemaining_ = 0.0f;
     // Refused before it ever repeated, so the start announced on the press
     // needs its stop: the server only cancels a repeat that was running. A
@@ -2078,6 +2084,7 @@ void SpellHandler::handleSpellStart(network::Packet& packet) {
         auto it = owner_.spellNameCacheRef().find(data.spellId);
         if (it != owner_.spellNameCacheRef().end() && isOnNextSwingSpell(it->second.attr)) {
             nextSwingSpellId_ = data.spellId;
+            nextSwingCastCount_ = isClassicLikeExpansion() ? castCount_ : data.castCount;
         }
     }
 
