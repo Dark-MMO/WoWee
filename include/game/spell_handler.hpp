@@ -432,16 +432,13 @@ private:
 
     // --- handleSpellLogExecute per-effect parsers (extracted to reduce nesting) ---
     void parseEffectPowerDrain(network::Packet& packet, uint32_t effectLogCount,
-                               uint64_t caster, uint32_t spellId, bool isPlayerCaster,
-                               bool usesFullGuid);
+                               uint64_t caster, uint32_t spellId, bool isPlayerCaster);
     void parseEffectHealthLeech(network::Packet& packet, uint32_t effectLogCount,
-                                uint64_t caster, uint32_t spellId, bool isPlayerCaster,
-                                bool usesFullGuid);
+                                uint64_t caster, uint32_t spellId, bool isPlayerCaster);
     void parseEffectCreateItem(network::Packet& packet, uint32_t effectLogCount,
                                uint64_t caster, uint32_t spellId, bool isPlayerCaster);
     void parseEffectInterruptCast(network::Packet& packet, uint32_t effectLogCount,
-                                  uint64_t caster, uint32_t spellId, bool isPlayerCaster,
-                                  bool usesFullGuid);
+                                  uint64_t caster, uint32_t spellId, bool isPlayerCaster);
     void parseEffectFeedPet(network::Packet& packet, uint32_t effectLogCount,
                             uint64_t caster, uint32_t spellId, bool isPlayerCaster);
 

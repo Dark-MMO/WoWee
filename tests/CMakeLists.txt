@@ -2586,6 +2586,7 @@ if(NOT ANDROID)
     target_link_options(test_game_replay PRIVATE
         $<TARGET_PROPERTY:wowee,LINK_OPTIONS>)
     add_dependencies(test_game_replay wowee)
+    target_sources(test_game_replay PRIVATE test_game_replay_spell_execute.cpp)
     add_test(NAME game_replay COMMAND test_game_replay)
     register_test_target(test_game_replay)
     target_sources(test_game_replay PRIVATE test_game_replay_spell_logs.cpp)
