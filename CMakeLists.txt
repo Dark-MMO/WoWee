@@ -1521,7 +1521,6 @@ else()
 endif()
 
 # ── Unit tests (Catch2) ──────────────────────────────────────
-if(WOWEE_BUILD_TESTS)
 # Defined here rather than beside the tools that use it: tests/ is added
 # below and a CMake function has to exist before the directory that calls
 # it is processed.
@@ -1559,6 +1558,7 @@ function(wowee_link_stormlib target)
     endif()
 endfunction()
 
+if(WOWEE_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
@@ -2752,4 +2752,3 @@ add_custom_target(copy_bundled_addons ALL
             -P ${CMAKE_SOURCE_DIR}/cmake/strip_saved_vars.cmake
     COMMENT "Copying bundled addons")
 add_dependencies(copy_bundled_addons wowee)
-
