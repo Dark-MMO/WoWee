@@ -3998,6 +3998,19 @@ const std::unordered_map<uint32_t, TalentTabEntry>& GameHandler::getAllTalentTab
     static const std::unordered_map<uint32_t, TalentTabEntry> empty;
     return empty;
 }
+// The server marks a pet that may still be named with UNIT_CAN_BE_RENAMED
+// (0x01) in UNIT_FIELD_BYTES_2 byte 2, beside UNIT_CAN_BE_ABANDONED, and clears
+// it once the pet is named (AzerothCore's HandlePetRename). The
+// SMSG_PET_RENAMEABLE notice that came before is gone after a relog and was
+// never cleared, so it is only the answer where that field is not mapped.
+bool GameHandler::isPetRenameable() const {
+    const uint16_t bytes2 = fieldIndex(UF::UNIT_FIELD_BYTES_2);
+    if (bytes2 == 0xFFFF) return petRenameablePending_;
+    const auto pet = petGuid_ ? getEntityManager().getEntity(petGuid_) : nullptr;
+    constexpr uint32_t UNIT_CAN_BE_RENAMED = 0x01;
+    return pet && ((pet->getField(bytes2) >> 16) & UNIT_CAN_BE_RENAMED) != 0;
+}
+
 float GameHandler::getGCDRemaining() const {
     return spellHandler_ ? spellHandler_->getGCDRemaining() : 0.0f;
 }

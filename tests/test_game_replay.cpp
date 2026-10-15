@@ -363,3 +363,33 @@ TEST_CASE("a player created feigning is alive, and stays so when it ends", "[rep
                                     {{UF::UNIT_FIELD_FLAGS_2, 0}, {UF::UNIT_DYNAMIC_FLAGS, 0}}));
     CHECK_FALSE(s.handler().isPlayerDead());
 }
+
+namespace {
+
+bool petCanBeRenamed(Session& s) {
+    lua_State* L = luaL_newstate();
+    lua_pushlightuserdata(L, &s.handler());
+    lua_setfield(L, LUA_REGISTRYINDEX, "wowee_game_handler");
+    wowee::addons::registerSocialLuaAPI(L);
+    REQUIRE(luaL_dostring(L, "return PetCanBeRenamed()") == 0);
+    const bool result = lua_toboolean(L, -1) != 0;
+    lua_close(L);
+    return result;
+}
+
+}  // namespace
+
+// Pet::LoadPetFromDB sets UNIT_CAN_BE_RENAMED (0x01) beside
+// UNIT_CAN_BE_ABANDONED only on a pet never named, and
+// WorldSession::HandlePetRename clears it.
+TEST_CASE("PetCanBeRenamed follows the pet's rename flag", "[replay]") {
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_LEVEL, 10}});
+    s.receive(UpdateObject().create(kPet, wowee::game::ObjectType::UNIT,
+                                    {{UF::UNIT_FIELD_HEALTH, 100}, {UF::UNIT_FIELD_BYTES_2, 0x03u << 16}}));
+    s.receive(petSpells(kPet));
+    CHECK(petCanBeRenamed(s));
+
+    s.receive(UpdateObject().values(kPet, {{UF::UNIT_FIELD_BYTES_2, 0x02u << 16}}));
+    CHECK_FALSE(petCanBeRenamed(s));
+}
