@@ -4484,31 +4484,15 @@ void SpellHandler::handleItemCooldown(network::Packet& packet) {
 }
 
 void SpellHandler::handleDispelFailed(network::Packet& packet) {
-    // WotLK:       uint32 dispelSpellId + packed_guid caster + packed_guid victim
-    //              [+ count × uint32 failedSpellId]
-    // Classic:     uint32 dispelSpellId + packed_guid caster + packed_guid victim
-    //              [+ count × uint32 failedSpellId]
-    // TBC:         uint64 caster + uint64 victim + uint32 spellId
-    //              [+ count × uint32 failedSpellId]
-    const bool dispelUsesFullGuid = isActiveExpansion("tbc");
+    // uint64 caster + uint64 victim + uint32 dispelSpellId + count × uint32 failedSpellId
+    // Classic/Turtle have no dispelSpellId.
+    if (!packet.hasRemaining(16)) return;
+    const uint64_t dispelCasterGuid = packet.readUInt64();
+    /*uint64_t victim =*/ packet.readUInt64();
     uint32_t dispelSpellId = 0;
-    uint64_t dispelCasterGuid = 0;
-    if (dispelUsesFullGuid) {
-        if (!packet.hasRemaining(20)) return;
-        dispelCasterGuid = packet.readUInt64();
-        /*uint64_t victim =*/ packet.readUInt64();
-        dispelSpellId = packet.readUInt32();
-    } else {
+    if (!isClassicLikeExpansion()) {
         if (!packet.hasRemaining(4)) return;
         dispelSpellId = packet.readUInt32();
-        if (!packet.hasFullPackedGuid()) {
-            packet.skipAll(); return;
-        }
-        dispelCasterGuid = packet.readPackedGuid();
-        if (!packet.hasFullPackedGuid()) {
-            packet.skipAll(); return;
-        }
-        /*uint64_t victim =*/ packet.readPackedGuid();
     }
     // Only show failure to the player who attempted the dispel
     if (dispelCasterGuid == owner_.getPlayerGuid()) {
@@ -4516,8 +4500,10 @@ void SpellHandler::handleDispelFailed(network::Packet& packet) {
         char buf[128];
         if (!name.empty())
             std::snprintf(buf, sizeof(buf), "%s failed to dispel.", name.c_str());
-        else
+        else if (dispelSpellId != 0)
             std::snprintf(buf, sizeof(buf), "Dispel failed! (spell %u)", dispelSpellId);
+        else
+            std::snprintf(buf, sizeof(buf), "Dispel failed!");
         owner_.addSystemChatMessage(buf);
     }
 }
@@ -4752,37 +4738,31 @@ void SpellHandler::handleExtraAuraInfo(network::Packet& packet, bool isInit) {
 }
 
 void SpellHandler::handleSpellDispelLog(network::Packet& packet) {
-    // WotLK/Classic/Turtle: packed casterGuid + packed victimGuid + uint32 dispelSpell + uint8 isStolen
-    // TBC:                  full uint64 casterGuid + full uint64 victimGuid + ...
-    // + uint32 count + count × (uint32 dispelled_spellId + uint32 unk)
-    const bool dispelUsesFullGuid = isActiveExpansion("tbc");
-    if (!packet.hasRemaining(dispelUsesFullGuid ? 8u : 1u)
-        || (!dispelUsesFullGuid && !packet.hasFullPackedGuid())) {
-        packet.skipAll(); return;
+    // Victim first, then caster, both packed, in every expansion. TBC and
+    // WotLK then add the dispel spell and an unused byte, and a byte after
+    // each dispelled spell id.
+    const bool classicLayout = isClassicLikeExpansion();
+    if (!packet.hasFullPackedGuid()) { packet.skipAll(); return; }
+    uint64_t victimGuid = packet.readPackedGuid();
+    if (!packet.hasFullPackedGuid()) { packet.skipAll(); return; }
+    uint64_t casterGuid = packet.readPackedGuid();
+    uint8_t isStolen = 0;
+    if (!classicLayout) {
+        if (!packet.hasRemaining(5)) { packet.skipAll(); return; }
+        /*uint32_t dispelSpell =*/ packet.readUInt32();
+        isStolen = packet.readUInt8();
     }
-    uint64_t casterGuid = dispelUsesFullGuid
-        ? packet.readUInt64() : packet.readPackedGuid();
-    if (!packet.hasRemaining(dispelUsesFullGuid ? 8u : 1u)
-        || (!dispelUsesFullGuid && !packet.hasFullPackedGuid())) {
-        packet.skipAll(); return;
-    }
-    uint64_t victimGuid = dispelUsesFullGuid
-        ? packet.readUInt64() : packet.readPackedGuid();
-    if (!packet.hasRemaining(9)) return;
-    /*uint32_t dispelSpell =*/ packet.readUInt32();
-    uint8_t isStolen = packet.readUInt8();
+    if (!packet.hasRemaining(4)) { packet.skipAll(); return; }
     uint32_t count   = packet.readUInt32();
     // Preserve every dispelled aura in the combat log instead of collapsing
     // multi-aura packets down to the first entry only.
-    const size_t dispelEntrySize = dispelUsesFullGuid ? 8u : 5u;
+    const size_t dispelEntrySize = classicLayout ? 4u : 5u;
     std::vector<uint32_t> dispelledIds;
     dispelledIds.reserve(count);
     for (uint32_t i = 0; i < count && packet.hasRemaining(dispelEntrySize); ++i) {
         uint32_t dispelledId = packet.readUInt32();
-        if (dispelUsesFullGuid) {
-            /*uint32_t unk =*/ packet.readUInt32();
-        } else {
-            /*uint8_t isPositive =*/ packet.readUInt8();
+        if (!classicLayout) {
+            /*uint8_t cleansed =*/ packet.readUInt8();
         }
         if (dispelledId != 0) {
             dispelledIds.push_back(dispelledId);
@@ -4842,22 +4822,12 @@ void SpellHandler::handleSpellDispelLog(network::Packet& packet) {
 void SpellHandler::handleSpellStealLog(network::Packet& packet) {
     // Sent to the CASTER (Mage) when Spellsteal succeeds.
     // Wire format mirrors SPELLDISPELLOG:
-    // WotLK/Classic/Turtle: packed victim + packed caster + uint32 spellId + uint8 isStolen + uint32 count
-    //                        + count × (uint32 stolenSpellId + uint8 isPositive)
-    // TBC:                   full uint64 victim + full uint64 caster + same tail
-    const bool stealUsesFullGuid = isActiveExpansion("tbc");
-    if (!packet.hasRemaining(stealUsesFullGuid ? 8u : 1u)
-        || (!stealUsesFullGuid && !packet.hasFullPackedGuid())) {
-        packet.skipAll(); return;
-    }
-    uint64_t stealVictim = stealUsesFullGuid
-        ? packet.readUInt64() : packet.readPackedGuid();
-    if (!packet.hasRemaining(stealUsesFullGuid ? 8u : 1u)
-        || (!stealUsesFullGuid && !packet.hasFullPackedGuid())) {
-        packet.skipAll(); return;
-    }
-    uint64_t stealCaster = stealUsesFullGuid
-        ? packet.readUInt64() : packet.readPackedGuid();
+    // packed victim + packed caster + uint32 spellId + uint8 unused + uint32 count
+    //   + count × (uint32 stolenSpellId + uint8 transferred), in TBC and WotLK alike
+    if (!packet.hasFullPackedGuid()) { packet.skipAll(); return; }
+    uint64_t stealVictim = packet.readPackedGuid();
+    if (!packet.hasFullPackedGuid()) { packet.skipAll(); return; }
+    uint64_t stealCaster = packet.readPackedGuid();
     if (!packet.hasRemaining(9)) {
         packet.skipAll(); return;
     }
@@ -4865,16 +4835,11 @@ void SpellHandler::handleSpellStealLog(network::Packet& packet) {
     /*uint8_t  isStolen    =*/ packet.readUInt8();
     uint32_t stealCount   = packet.readUInt32();
     // Preserve every stolen aura in the combat log instead of only the first.
-    const size_t stealEntrySize = stealUsesFullGuid ? 8u : 5u;
     std::vector<uint32_t> stolenIds;
     stolenIds.reserve(stealCount);
-    for (uint32_t i = 0; i < stealCount && packet.hasRemaining(stealEntrySize); ++i) {
+    for (uint32_t i = 0; i < stealCount && packet.hasRemaining(5); ++i) {
         uint32_t stolenId = packet.readUInt32();
-        if (stealUsesFullGuid) {
-            /*uint32_t unk =*/ packet.readUInt32();
-        } else {
-            /*uint8_t isPos  =*/ packet.readUInt8();
-        }
+        /*uint8_t transferred =*/ packet.readUInt8();
         if (stolenId != 0) {
             stolenIds.push_back(stolenId);
         }
@@ -4942,25 +4907,14 @@ void SpellHandler::handleSpellChanceProcLog(network::Packet& packet) {
 
 void SpellHandler::handleSpellInstaKillLog(network::Packet& packet) {
     // Sent when a unit is killed by a spell with SPELL_ATTR_EX2_INSTAKILL (e.g. Execute, Obliterate, etc.)
-    // WotLK/Classic/Turtle: packed_guid caster + packed_guid victim + uint32 spellId
-    // TBC:                  full uint64 caster + full uint64 victim + uint32 spellId
-    const bool ikUsesFullGuid = isActiveExpansion("tbc");
-    auto ik_rem = [&]() { return packet.getRemainingSize(); };
-    if (ik_rem() < (ikUsesFullGuid ? 8u : 1u)
-        || (!ikUsesFullGuid && !packet.hasFullPackedGuid())) {
+    // TBC/WotLK: uint64 caster + uint64 victim + uint32 spellId
+    // Classic/Turtle: uint64 victim + uint32 spellId, with no caster
+    const bool hasCaster = !isClassicLikeExpansion();
+    if (!packet.hasRemaining(hasCaster ? 20u : 12u)) {
         packet.skipAll(); return;
     }
-    uint64_t ikCaster = ikUsesFullGuid
-        ? packet.readUInt64() : packet.readPackedGuid();
-    if (ik_rem() < (ikUsesFullGuid ? 8u : 1u)
-        || (!ikUsesFullGuid && !packet.hasFullPackedGuid())) {
-        packet.skipAll(); return;
-    }
-    uint64_t ikVictim = ikUsesFullGuid
-        ? packet.readUInt64() : packet.readPackedGuid();
-    if (ik_rem() < 4) {
-        packet.skipAll(); return;
-    }
+    uint64_t ikCaster = hasCaster ? packet.readUInt64() : 0;
+    uint64_t ikVictim = packet.readUInt64();
     uint32_t ikSpell = packet.readUInt32();
     // Show kill/death feedback for the local player
     if (ikCaster == owner_.getPlayerGuid()) {

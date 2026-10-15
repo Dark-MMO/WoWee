@@ -2547,7 +2547,7 @@ wowee_add_test(test_pass_ablation
             ${CMAKE_SOURCE_DIR}/src/rendering/pass_ablation.cpp)
 
 # ── test_game_replay ─────────────────────────────────────────
-# Server packets through GameHandler's own dispatch, against the real WotLK
+# Server packets through GameHandler's own dispatch, against the real
 # tables. GameHandler reaches into nearly every part of the client, so this
 # links the client's own objects, minus its main, rather than a source list:
 # nothing is compiled twice, and nothing here can drift from what the client
@@ -2574,6 +2574,7 @@ if(NOT ANDROID)
     add_dependencies(test_game_replay wowee)
     add_test(NAME game_replay COMMAND test_game_replay)
     register_test_target(test_game_replay)
+    target_sources(test_game_replay PRIVATE test_game_replay_spell_logs.cpp)
 endif()
 
 # ── Sanitizers, once every test target exists ────────────────
