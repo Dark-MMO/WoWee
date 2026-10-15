@@ -4827,6 +4827,9 @@ void Application::render() {
                 buttons.left   = ImGui::IsMouseDown(ImGuiMouseButton_Left);
                 buttons.right  = ImGui::IsMouseDown(ImGuiMouseButton_Right);
                 buttons.middle = ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+                // ImGui has no X1/X2 enum names; its SDL3 backend maps them to 3/4.
+                buttons.button4 = ImGui::IsMouseDown(3);
+                buttons.button5 = ImGui::IsMouseDown(4);
                 engine->dispatchMouse(io.MousePos.x, io.MousePos.y,
                                       io.DisplaySize.y, buttons);
 
