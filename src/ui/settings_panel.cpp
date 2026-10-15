@@ -255,6 +255,10 @@ for (int i = 0; i < numActions; ++i) {
         keyName = "Tab";
     } else if (currentKey == ImGuiKey_Space) {
         keyName = "Space";
+    } else if (currentKey == ImGuiKey_MouseX1) {
+        keyName = "Mouse4";
+    } else if (currentKey == ImGuiKey_MouseX2) {
+        keyName = "Mouse5";
     } else if (currentKey >= ImGuiKey_F1 && currentKey <= ImGuiKey_F12) {
         static char keyBuf[16];
         snprintf(keyBuf, sizeof(keyBuf), "F%d", 1 + (currentKey - ImGuiKey_F1));

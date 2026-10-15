@@ -266,6 +266,10 @@ void KeybindingManager::loadFromConfigFile(const std::string& filePath) {
             key = ImGuiKey_Home;
         } else if (keyStr == "End") {
             key = ImGuiKey_End;
+        } else if (keyStr == "Mouse4") {
+            key = ImGuiKey_MouseX1;
+        } else if (keyStr == "Mouse5") {
+            key = ImGuiKey_MouseX2;
         } else if (keyStr.find('F') == 0 && keyStr.length() <= 3) {
             // F1-F12 keys
             try {
@@ -366,6 +370,10 @@ void KeybindingManager::saveToConfigFile(const std::string& filePath) const {
             keyStr = "Home";
         } else if (key == ImGuiKey_End) {
             keyStr = "End";
+        } else if (key == ImGuiKey_MouseX1) {
+            keyStr = "Mouse4";
+        } else if (key == ImGuiKey_MouseX2) {
+            keyStr = "Mouse5";
         } else if (key >= ImGuiKey_F1 && key <= ImGuiKey_F12) {
             keyStr = "F" + std::to_string(1 + (key - ImGuiKey_F1));
         }

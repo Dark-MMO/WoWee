@@ -84,6 +84,8 @@ public:
         bool left = false;
         bool right = false;
         bool middle = false;
+        bool button4 = false;
+        bool button5 = false;
     };
     /// Window pixels from the top-left, as ImGui reports them, plus the
     /// window height - converted here rather than by the caller, so the
@@ -402,7 +404,7 @@ private:
     /// Per button, because a press and its release belong together: sliding off
     /// a button between them is how a player changes their mind, and holding
     /// one button while clicking another must not confuse the first.
-    static constexpr int kMouseButtons = 3;
+    static constexpr int kMouseButtons = 5;
     uint32_t pressedWid_[kMouseButtons] = {0, 0, 0};
     bool buttonDown_[kMouseButtons] = {false, false, false};
     /// Where each button went down, so a drag can be told from a click by how
