@@ -3470,13 +3470,7 @@ void SpellHandler::loadSpellNameCache() const {
             if (categoryRecoveryField != 0xFFFFFFFF && categoryRecoveryField < fieldCount)
                 entry.categoryRecoveryMs = dbc->getUInt32(i, categoryRecoveryField);
             if (hasEffectFields) {
-                for (int e = 0; e < 3; ++e) {
-                    const uint32_t effect = dbc->getUInt32(i, effectFields[e]);
-                    if (effect == 24 || effect == 114) {   // CREATE_ITEM, CREATE_ITEM_2
-                        entry.createdItemId = dbc->getUInt32(i, itemTypeFields[e]);
-                        break;
-                    }
-                }
+                entry.createdItemId = pipeline::spellCreatedItem(*dbc, i, effectFields, itemTypeFields);
             }
             if (hasReagentFields) {
                 for (int r = 0; r < 8; ++r) {
