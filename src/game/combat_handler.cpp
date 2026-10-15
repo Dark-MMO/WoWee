@@ -650,6 +650,10 @@ void CombatHandler::handleAttackStop(network::Packet& packet) {
     }
 }
 
+// VictimState, the same in every expansion's servers.
+constexpr uint32_t VICTIMSTATE_DODGE = 2, VICTIMSTATE_PARRY = 3, VICTIMSTATE_BLOCKS = 5,
+                   VICTIMSTATE_EVADES = 6, VICTIMSTATE_IS_IMMUNE = 7, VICTIMSTATE_DEFLECTS = 8;
+
 void CombatHandler::handleAttackerStateUpdate(network::Packet& packet) {
     AttackerStateUpdateData data;
     if (!owner_.getPacketParsers()->parseAttackerStateUpdate(packet, data)) return;
@@ -697,7 +701,7 @@ void CombatHandler::handleAttackerStateUpdate(network::Packet& packet) {
             auto weaponSize = audio::CombatSoundManager::WeaponSize::MEDIUM;
             if (data.isMiss()) {
                 csm->playWeaponMiss(false);
-            } else if (data.victimState == 1 || data.victimState == 2) {
+            } else if (data.victimState == VICTIMSTATE_DODGE || data.victimState == VICTIMSTATE_PARRY) {
                 // Dodge/parry - swing whoosh but no impact
                 csm->playWeaponSwing(weaponSize, false);
             } else {
@@ -708,34 +712,31 @@ void CombatHandler::handleAttackerStateUpdate(network::Packet& packet) {
         }
         // Character vocalizations
         if (auto* asm_ = ac->getActivitySoundManager()) {
-            if (isPlayerAttacker && !data.isMiss() && data.victimState != 1 && data.victimState != 2) {
+            if (isPlayerAttacker && !data.isMiss() && data.victimState != VICTIMSTATE_DODGE &&
+                data.victimState != VICTIMSTATE_PARRY) {
                 asm_->playAttackGrunt();
             }
-            if (isPlayerTarget && !data.isMiss() && data.victimState != 1 && data.victimState != 2) {
+            if (isPlayerTarget && !data.isMiss() && data.victimState != VICTIMSTATE_DODGE &&
+                data.victimState != VICTIMSTATE_PARRY) {
                 asm_->playWound(data.isCrit());
             }
         }
     }
 
-    if (data.isMiss()) {
-        addCombatText(CombatTextEntry::MISS, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-    } else if (data.victimState == 1) {
-        addCombatText(CombatTextEntry::DODGE, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-    } else if (data.victimState == 2) {
-        addCombatText(CombatTextEntry::PARRY, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-    } else if (data.victimState == 4) {
-        // VICTIMSTATE_BLOCKS: show reduced damage and the blocked amount
-        if (data.totalDamage > 0)
-            addCombatText(CombatTextEntry::MELEE_DAMAGE, data.totalDamage, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-        addCombatText(CombatTextEntry::BLOCK, static_cast<int32_t>(data.blocked), 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-    } else if (data.victimState == 5) {
-        // VICTIMSTATE_EVADE: NPC evaded (out of combat zone).
+    // An evade comes with the miss flag set as well, so it is asked first.
+    if (data.victimState == VICTIMSTATE_EVADES) {
         addCombatText(CombatTextEntry::EVADE, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-    } else if (data.victimState == 6) {
-        // VICTIMSTATE_IS_IMMUNE: Target is immune to this attack.
+    } else if (data.isMiss()) {
+        addCombatText(CombatTextEntry::MISS, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
+    } else if (data.victimState == VICTIMSTATE_DODGE) {
+        addCombatText(CombatTextEntry::DODGE, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
+    } else if (data.victimState == VICTIMSTATE_PARRY) {
+        addCombatText(CombatTextEntry::PARRY, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
+    } else if (data.victimState == VICTIMSTATE_BLOCKS) {
+        addCombatText(CombatTextEntry::BLOCK, static_cast<int32_t>(data.blocked), 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
+    } else if (data.victimState == VICTIMSTATE_IS_IMMUNE) {
         addCombatText(CombatTextEntry::IMMUNE, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
-    } else if (data.victimState == 7) {
-        // VICTIMSTATE_DEFLECT: Attack was deflected (e.g. shield slam reflect).
+    } else if (data.victimState == VICTIMSTATE_DEFLECTS) {
         addCombatText(CombatTextEntry::DEFLECT, 0, 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
     } else {
         CombatTextEntry::Type type;
@@ -758,15 +759,18 @@ void CombatHandler::handleAttackerStateUpdate(network::Packet& packet) {
             addCombatText(CombatTextEntry::ABSORB, static_cast<int32_t>(totalAbsorbed), 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
         if (totalResisted > 0)
             addCombatText(CombatTextEntry::RESIST, static_cast<int32_t>(totalResisted), 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
+        // A partial block is a hit like any other, with the blocked part beside it.
+        if (data.blocked > 0)
+            addCombatText(CombatTextEntry::BLOCK, static_cast<int32_t>(data.blocked), 0, isPlayerAttacker, 0, data.attackerGuid, data.targetGuid);
     }
 
     // Fire hit reaction animation on the victim
     if (owner_.hitReactionCallbackRef() && !data.isMiss()) {
         using HR = GameHandler::HitReaction;
         HR reaction = HR::WOUND;
-        if (data.victimState == 1) reaction = HR::DODGE;
-        else if (data.victimState == 2) reaction = HR::PARRY;
-        else if (data.victimState == 4) reaction = HR::BLOCK;
+        if (data.victimState == VICTIMSTATE_DODGE) reaction = HR::DODGE;
+        else if (data.victimState == VICTIMSTATE_PARRY) reaction = HR::PARRY;
+        else if (data.victimState == VICTIMSTATE_BLOCKS || data.blocked > 0) reaction = HR::BLOCK;
         else if (data.isCrit()) reaction = HR::CRIT_WOUND;
         owner_.hitReactionCallbackRef()(data.targetGuid, reaction);
     }
