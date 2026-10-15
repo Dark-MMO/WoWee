@@ -4140,8 +4140,8 @@ void SpellHandler::handleCastResult(network::Packet& packet) {
 }
 
 void SpellHandler::handleSpellFailedOther(network::Packet& packet) {
-    const bool tbcLike2 = isPreWotlk();
-    uint64_t failOtherGuid = tbcLike2
+    // A whole guid on classic, packed on TBC and WotLK.
+    uint64_t failOtherGuid = isClassicLikeExpansion()
         ? (packet.hasRemaining(8) ? packet.readUInt64() : 0)
         : packet.readPackedGuid();
     if (failOtherGuid != 0 && failOtherGuid != owner_.getPlayerGuid()) {
@@ -4231,9 +4231,10 @@ void SpellHandler::handleSpellModifier(network::Packet& packet, bool isFlat) {
 }
 
 void SpellHandler::handleSpellDelayed(network::Packet& packet) {
-    const bool spellDelayTbcLike = isPreWotlk();
-    if (!packet.hasRemaining(spellDelayTbcLike ? 8u : 1u) ) return;
-    uint64_t caster = spellDelayTbcLike
+    // A whole guid on classic, packed on TBC and WotLK.
+    const bool spellDelayFullGuid = isClassicLikeExpansion();
+    if (!packet.hasRemaining(spellDelayFullGuid ? 8u : 1u) ) return;
+    uint64_t caster = spellDelayFullGuid
         ? packet.readUInt64() : packet.readPackedGuid();
     if (!packet.hasRemaining(4)) return;
     uint32_t delayMs = packet.readUInt32();
@@ -4354,22 +4355,20 @@ void SpellHandler::handleSpellLogMiss(network::Packet& packet) {
 
 void SpellHandler::handleSpellFailure(network::Packet& packet) {
     // WotLK: packed_guid + uint8 castCount + uint32 spellId + uint8 failReason
-    // TBC:   full uint64 + uint8 castCount + uint32 spellId + uint8 failReason
+    // TBC:   packed_guid + uint32 spellId + uint8 failReason  (NO castCount)
     // Classic: full uint64 + uint32 spellId + uint8 failReason  (NO castCount)
     const bool isClassic = isClassicLikeExpansion();
-    const bool isTbc     = isActiveExpansion("tbc");
-    uint64_t failGuid = (isClassic || isTbc)
+    const bool hasCastCount = !isPreWotlk();
+    uint64_t failGuid = isClassic
         ? (packet.hasRemaining(8) ? packet.readUInt64() : 0)
         : packet.readPackedGuid();
-    // Classic omits the castCount byte; TBC and WotLK include it
-    const size_t remainingFields = isClassic ? 5u : 6u;  // spellId(4)+reason(1) [+castCount(1)]
+    const size_t remainingFields = hasCastCount ? 6u : 5u;  // spellId(4)+reason(1) [+castCount(1)]
     uint32_t failSpellId = 0;
     if (packet.hasRemaining(remainingFields)) {
-        if (!isClassic) /*uint8_t castCount =*/ packet.readUInt8();
+        if (hasCastCount) /*uint8_t castCount =*/ packet.readUInt8();
         failSpellId = packet.readUInt32();
         uint8_t rawFailReason = packet.readUInt8();
-        // Classic result enum starts at 0=AFFECTING_COMBAT; shift +1 for WotLK table
-        uint8_t failReason = isClassic ? static_cast<uint8_t>(rawFailReason + 1) : rawFailReason;
+        uint8_t failReason = owner_.getPacketParsers()->castResult(rawFailReason);
         if (failGuid == owner_.getPlayerGuid() && failReason != 0) {
             // Show interruption/failure reason in chat and error overlay for player
             int pt = -1;
