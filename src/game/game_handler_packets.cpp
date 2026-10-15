@@ -1601,33 +1601,7 @@ void GameHandler::registerRemainingOpcodes() {
             float wIntensity = packet.readFloat();
             if (packet.hasRemaining(1))
                 /*uint8_t isAbrupt =*/ packet.readUInt8();
-            uint32_t prevWeatherType = weatherType_;
-            weatherType_ = wType;
-            weatherIntensity_ = wIntensity;
-            const char* typeName = (wType == 1) ? "Rain" : (wType == 2) ? "Snow" : (wType == 3) ? "Storm" : "Clear";
-            LOG_INFO("Weather changed: type=", wType, " (", typeName, "), intensity=", wIntensity);
-            // Announce weather changes (including initial zone weather)
-            if (wType != prevWeatherType) {
-                const char* weatherMsg = nullptr;
-                if (wIntensity < 0.05f || wType == 0) {
-                    if (prevWeatherType != 0)
-                        weatherMsg = "The weather clears.";
-                } else if (wType == 1) {
-                    weatherMsg = "It begins to rain.";
-                } else if (wType == 2) {
-                    weatherMsg = "It begins to snow.";
-                } else if (wType == 3) {
-                    weatherMsg = "A storm rolls in.";
-                }
-                if (weatherMsg) addSystemChatMessage(weatherMsg);
-            }
-            // Notify addons of weather change
-                            fireAddonEvent("WEATHER_CHANGED", {std::to_string(wType), std::to_string(wIntensity)});
-            // Storm transition: trigger a low-frequency thunder rumble shake
-            if (wType == 3 && wIntensity > 0.3f && cameraShakeCallback_) {
-                float mag = 0.03f + wIntensity * 0.04f; // 0.03–0.07 units
-                cameraShakeCallback_(mag, 6.0f, 0.6f);
-            }
+            applyWeather(wType, wIntensity);
         }
     };
     // Server-script text message - display in system chat
@@ -3478,20 +3452,13 @@ void GameHandler::handlePacket(network::Packet& packet) {
             float wIntensity = packet.readFloat();
             uint8_t abrupt = packet.readUInt8();
             bool plausibleWeather =
-                (wType <= 3) &&
+                (wType == 0 || weatherKind(wType) != WeatherKind::NONE) &&
                 std::isfinite(wIntensity) &&
                 (wIntensity >= 0.0f && wIntensity <= 1.5f) &&
                 (abrupt <= 1);
             if (plausibleWeather) {
-                weatherType_ = wType;
-                weatherIntensity_ = wIntensity;
-                const char* typeName =
-                    (wType == 1) ? "Rain" :
-                    (wType == 2) ? "Snow" :
-                    (wType == 3) ? "Storm" : "Clear";
-                LOG_INFO("Weather changed (0x006B alias): type=", wType,
-                         " (", typeName, "), intensity=", wIntensity,
-                         ", abrupt=", static_cast<int>(abrupt));
+                LOG_INFO("Opcode 0x006B interpreted as SMSG_WEATHER");
+                applyWeather(wType, wIntensity);
                 return;
             }
             // Not weather-shaped: rewind and fall through to normal opcode table handling.
