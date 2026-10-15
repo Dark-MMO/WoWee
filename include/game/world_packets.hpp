@@ -2091,15 +2091,18 @@ struct AttackerStateUpdateData {
     int32_t totalDamage = 0;
     uint8_t subDamageCount = 0;
     std::vector<SubDamage> subDamages;
-    uint32_t victimState = 0;    // 0=hit, 1=dodge, 2=parry, 3=interrupt, 4=block, etc.
+    // VictimState: 0 unaffected (a miss), 1 hit, 2 dodge, 3 parry,
+    // 4 interrupt, 5 full block, 6 evade, 7 immune, 8 deflect.
+    uint32_t victimState = 0;
     int32_t overkill = -1;
     uint32_t blocked = 0;
 
     [[nodiscard]] bool isValid() const { return attackerGuid != 0; }
-    [[nodiscard]] bool isCrit() const     { return (hitInfo & 0x0200) != 0; }
-    [[nodiscard]] bool isMiss() const     { return (hitInfo & 0x0010) != 0; }
-    [[nodiscard]] bool isGlancing() const { return (hitInfo & 0x0800) != 0; }
-    [[nodiscard]] bool isCrushing() const { return (hitInfo & 0x1000) != 0; }
+    // WotLK's HitInfo bits; classic and TBC number these differently.
+    [[nodiscard]] bool isCrit() const     { return (hitInfo & 0x00000200) != 0; }
+    [[nodiscard]] bool isMiss() const     { return (hitInfo & 0x00000010) != 0; }
+    [[nodiscard]] bool isGlancing() const { return (hitInfo & 0x00010000) != 0; }
+    [[nodiscard]] bool isCrushing() const { return (hitInfo & 0x00020000) != 0; }
 };
 
 class AttackerStateUpdateParser {

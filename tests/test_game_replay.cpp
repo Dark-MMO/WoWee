@@ -213,6 +213,38 @@ bool petCanBeAbandoned(Session& s) {
 
 }  // namespace
 
+namespace {
+
+constexpr uint64_t kWolf = 0xF130000000000321ull;
+
+// Unit::SendAttackStateUpdate for one swing of a single physical sub-damage.
+wowee::network::Packet swing(uint64_t attacker, uint64_t victim, uint32_t damage, uint8_t victimState,
+                             uint32_t hitInfo = 0x2 /* HITINFO_AFFECTS_VICTIM */, uint32_t blocked = 0) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_ATTACKERSTATEUPDATE));
+    p.writeUInt32(hitInfo);
+    p.writePackedGuid(attacker);
+    p.writePackedGuid(victim);
+    p.writeUInt32(damage);
+    p.writeUInt32(0);
+    p.writeUInt8(1);
+    p.writeUInt32(1);  // physical
+    p.writeFloat(static_cast<float>(damage));
+    p.writeUInt32(damage);
+    p.writeUInt8(victimState);
+    p.writeUInt32(0);
+    p.writeUInt32(0);
+    if (hitInfo & 0x2000) p.writeUInt32(blocked);  // HITINFO_BLOCK
+    return p;
+}
+
+std::vector<wowee::game::CombatTextEntry::Type> combatTextTypes(Session& s) {
+    std::vector<wowee::game::CombatTextEntry::Type> types;
+    for (const auto& e : s.handler().getCombatText()) types.push_back(e.type);
+    return types;
+}
+
+}  // namespace
+
 // Pet::CreateBaseAtTamed and Pet::LoadPetFromDB set UNIT_CAN_BE_ABANDONED
 // (0x02) in UNIT_FIELD_BYTES_2 byte 2 on a hunter's beast, and nothing else
 // sets it.
@@ -362,4 +394,55 @@ TEST_CASE("a player created feigning is alive, and stays so when it ends", "[rep
     s.receive(UpdateObject().values(Session::kPlayerGuid,
                                     {{UF::UNIT_FIELD_FLAGS_2, 0}, {UF::UNIT_DYNAMIC_FLAGS, 0}}));
     CHECK_FALSE(s.handler().isPlayerDead());
+}
+
+TEST_CASE("a wolf's hit shows its damage", "[replay]") {
+    using T = wowee::game::CombatTextEntry;
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 300}, {UF::UNIT_FIELD_MAXHEALTH, 300}});
+    s.receive(swing(kWolf, Session::kPlayerGuid, 12, 1));
+    REQUIRE(s.handler().getCombatText().size() == 1);
+    CHECK(s.handler().getCombatText()[0].type == T::MELEE_DAMAGE);
+    CHECK(s.handler().getCombatText()[0].amount == 12);
+}
+
+TEST_CASE("a dodged swing shows a dodge", "[replay]") {
+    using T = wowee::game::CombatTextEntry;
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 300}, {UF::UNIT_FIELD_MAXHEALTH, 300}});
+    s.receive(swing(Session::kPlayerGuid, kWolf, 0, 2));
+    CHECK(combatTextTypes(s) == std::vector<T::Type>{T::DODGE});
+}
+
+TEST_CASE("a parried wolf shows a parry", "[replay]") {
+    using T = wowee::game::CombatTextEntry;
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 300}, {UF::UNIT_FIELD_MAXHEALTH, 300}});
+    s.receive(swing(kWolf, Session::kPlayerGuid, 0, 3));
+    CHECK(combatTextTypes(s) == std::vector<T::Type>{T::PARRY});
+}
+
+// Unit::CalcDamageInfo sends an evade as a miss with VICTIMSTATE_EVADES.
+TEST_CASE("an evading wolf shows an evade, not a miss", "[replay]") {
+    using T = wowee::game::CombatTextEntry;
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 300}, {UF::UNIT_FIELD_MAXHEALTH, 300}});
+    s.receive(swing(Session::kPlayerGuid, kWolf, 0, 6, 0x2 | 0x10 | 0x200000));
+    CHECK(combatTextTypes(s) == std::vector<T::Type>{T::EVADE});
+}
+
+TEST_CASE("a partly blocked hit shows its damage and the block", "[replay]") {
+    using T = wowee::game::CombatTextEntry;
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 300}, {UF::UNIT_FIELD_MAXHEALTH, 300}});
+    s.receive(swing(kWolf, Session::kPlayerGuid, 7, 1, 0x2 | 0x2000, 5));
+    CHECK(combatTextTypes(s) == std::vector<T::Type>{T::MELEE_DAMAGE, T::BLOCK});
+}
+
+TEST_CASE("a fully blocked hit shows only the block", "[replay]") {
+    using T = wowee::game::CombatTextEntry;
+    Session s;
+    s.spawnPlayer({{UF::UNIT_FIELD_HEALTH, 300}, {UF::UNIT_FIELD_MAXHEALTH, 300}});
+    s.receive(swing(kWolf, Session::kPlayerGuid, 0, 5, 0x2 | 0x2000, 12));
+    CHECK(combatTextTypes(s) == std::vector<T::Type>{T::BLOCK});
 }
