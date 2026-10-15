@@ -1176,8 +1176,18 @@ static int lua_PetCanBeDismissed(lua_State* L) {
     lua_pushboolean(L, gh && gh->hasPet());
     return 1;
 }
-// Abandoning is a hunter's pet, and nothing here knows which kind it has yet.
-static int lua_PetCanBeAbandoned(lua_State* L) { return luaReturnFalse(L); }
+// Abandoning is for a hunter's pet, and the server says which pets those are:
+// UNIT_FIELD_BYTES_2 byte 2 carries UNIT_CAN_BE_ABANDONED (0x02) on them and on
+// no other. The pet menu offers Rename, Abandon and the pet paperdoll on it.
+static int lua_PetCanBeAbandoned(lua_State* L) {
+    auto* gh = getGameHandler(L);
+    const uint64_t pet = gh ? gh->getPetGuid() : 0;
+    auto entity = pet ? gh->getEntityManager().getEntity(pet) : nullptr;
+    constexpr uint32_t kCanBeAbandoned = 0x02;
+    const uint32_t bytes2 = entity ? entity->getField(game::fieldIndex(game::UF::UNIT_FIELD_BYTES_2)) : 0;
+    lua_pushboolean(L, ((bytes2 >> 16) & kCanBeAbandoned) != 0);
+    return 1;
+}
 
 static int lua_InCombatLockdown(lua_State* L) {
     auto* gh = getGameHandler(L);
