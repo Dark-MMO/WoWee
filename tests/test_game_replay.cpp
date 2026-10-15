@@ -8,6 +8,8 @@
 #include "game/packed_time.hpp"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 extern "C" {
 #include "lauxlib.h"
@@ -225,4 +227,74 @@ TEST_CASE("PetCanBeAbandoned is true for a tamed pet only", "[replay]") {
 
         CHECK(petCanBeAbandoned(s) == tamed);
     }
+}
+
+// WorldPackets::Misc::Weather: the WeatherState, its intensity, and whether
+// it changes at once. Weather::GetWeatherState picks the state.
+TEST_CASE("weather states read as what the server means", "[replay]") {
+    using wowee::game::WeatherKind;
+    struct Case { uint32_t state; WeatherKind kind; bool raining; bool snowing; };
+    const Case cases[] = {
+        {0, WeatherKind::NONE, false, false},
+        {1, WeatherKind::FOG, false, false},
+        {3, WeatherKind::RAIN, true, false},
+        {4, WeatherKind::RAIN, true, false},
+        {5, WeatherKind::RAIN, true, false},
+        {6, WeatherKind::SNOW, false, true},
+        {7, WeatherKind::SNOW, false, true},
+        {8, WeatherKind::SNOW, false, true},
+        {22, WeatherKind::SANDSTORM, false, false},
+        {41, WeatherKind::SANDSTORM, false, false},
+        {42, WeatherKind::SANDSTORM, false, false},
+        {86, WeatherKind::THUNDERSTORM, true, false},
+        {90, WeatherKind::RAIN, true, false},
+        {106, WeatherKind::SNOW, false, true},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.state);
+        Session s;
+        wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_WEATHER));
+        p.writeUInt32(c.state);
+        p.writeFloat(0.5f);
+        p.writeUInt8(0);
+        s.receive(p);
+
+        CHECK(s.handler().getWeatherKind() == c.kind);
+        CHECK(s.handler().isRaining() == c.raining);
+        CHECK(s.handler().isSnowing() == c.snowing);
+    }
+}
+
+namespace {
+
+wowee::network::Packet weather(uint32_t state, float intensity) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_WEATHER));
+    p.writeUInt32(state);
+    p.writeFloat(intensity);
+    p.writeUInt8(0);
+    return p;
+}
+
+std::vector<std::string> chatLines(Session& s) {
+    std::vector<std::string> lines;
+    for (const auto& m : s.handler().getChatHistory()) lines.push_back(m.message);
+    return lines;
+}
+
+}  // namespace
+
+TEST_CASE("weather is announced once per kind, and clears only after weather", "[replay]") {
+    Session s;
+    s.receive(weather(3, 0.3f));
+    s.receive(weather(5, 0.9f));
+    s.receive(weather(0, 0.0f));
+    s.receive(weather(1, 0.5f));
+    s.receive(weather(0, 0.0f));
+    CHECK(chatLines(s) == std::vector<std::string>{"It begins to rain.", "The weather clears."});
+}
+
+TEST_CASE("faint rain is not rain", "[replay]") {
+    Session s;
+    s.receive(weather(4, 0.01f));
+    CHECK_FALSE(s.handler().isRaining());
 }

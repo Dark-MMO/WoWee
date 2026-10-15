@@ -2021,16 +2021,18 @@ void Renderer::update(float deltaTime) {
                 // particles so they cannot replace the authored fog ambience.
                 weather->setWeatherType(Weather::Type::NONE);
                 weather->setIntensity(0.0f);
-            } else if (wType != 0) {
-                // Server-driven weather (SMSG_WEATHER) - authoritative
-                if (wType == 1)      weather->setWeatherType(Weather::Type::RAIN);
-                else if (wType == 2) weather->setWeatherType(Weather::Type::SNOW);
-                else if (wType == 3) weather->setWeatherType(Weather::Type::STORM);
-                else                 weather->setWeatherType(Weather::Type::NONE);
-                weather->setIntensity(wInt);
             } else {
-                // No server weather - use zone-based weather configuration
-                weather->updateZoneWeather(getCurrentZoneId(), deltaTime);
+                // The server's weather, and only that: it sends fine weather
+                // on entering a zone that has none, and this drew a random
+                // zone weather over it. Fog and sandstorms have no particles
+                // here, so they draw nothing rather than rain.
+                switch (game::weatherKind(wType)) {
+                    case game::WeatherKind::RAIN:         weather->setWeatherType(Weather::Type::RAIN); break;
+                    case game::WeatherKind::SNOW:         weather->setWeatherType(Weather::Type::SNOW); break;
+                    case game::WeatherKind::THUNDERSTORM: weather->setWeatherType(Weather::Type::STORM); break;
+                    default:                              weather->setWeatherType(Weather::Type::NONE); break;
+                }
+                weather->setIntensity(weather->getWeatherType() == Weather::Type::NONE ? 0.0f : wInt);
             }
             weather->setEnabled(!insideWmo);
 

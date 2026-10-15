@@ -670,6 +670,40 @@ void GameHandler::selectCharacter(uint64_t characterGuid) {
     LOG_INFO("CMSG_PLAYER_LOGIN sent, entering world...");
 }
 
+// SMSG_WEATHER, and the 0x006B alias some 1.12 servers send it as.
+void GameHandler::applyWeather(uint32_t state, float intensity) {
+    const WeatherKind was = weatherKind(weatherType_);
+    const WeatherKind kind = weatherKind(state);
+    weatherType_ = state;
+    weatherIntensity_ = intensity;
+    LOG_INFO("Weather changed: state=", state, ", intensity=", intensity);
+    // Announce weather changes (including initial zone weather)
+    if (kind != was) {
+        const auto announced = [](WeatherKind k) {
+            return k == WeatherKind::RAIN || k == WeatherKind::SNOW ||
+                   k == WeatherKind::THUNDERSTORM;
+        };
+        const char* weatherMsg = nullptr;
+        if (intensity < 0.05f || kind == WeatherKind::NONE) {
+            if (announced(was)) weatherMsg = "The weather clears.";
+        } else if (kind == WeatherKind::RAIN) {
+            weatherMsg = "It begins to rain.";
+        } else if (kind == WeatherKind::SNOW) {
+            weatherMsg = "It begins to snow.";
+        } else if (kind == WeatherKind::THUNDERSTORM) {
+            weatherMsg = "A storm rolls in.";
+        }
+        if (weatherMsg) addSystemChatMessage(weatherMsg);
+    }
+    // Notify addons of weather change
+    fireAddonEvent("WEATHER_CHANGED", {std::to_string(state), std::to_string(intensity)});
+    // Storm transition: trigger a low-frequency thunder rumble shake
+    if (kind == WeatherKind::THUNDERSTORM && intensity > 0.3f && cameraShakeCallback_) {
+        float mag = 0.03f + intensity * 0.04f; // 0.03–0.07 units
+        cameraShakeCallback_(mag, 6.0f, 0.6f);
+    }
+}
+
 void GameHandler::handleLoginSetTimeSpeed(network::Packet& packet) {
     // SMSG_LOGIN_SETTIMESPEED (0x042)
     // Structure: PackedTime gameTime, float timeScale

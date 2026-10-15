@@ -15,6 +15,7 @@
 #include "core/coordinates.hpp"
 #include "core/input.hpp"
 #include "rendering/renderer.hpp"
+#include "rendering/weather.hpp"
 #include "rendering/post_process_pipeline.hpp"
 #include "rendering/animation_controller.hpp"
 #include "rendering/wmo_renderer.hpp"
@@ -1419,15 +1420,15 @@ void GameScreen::renderMinimapReadouts(const MinimapFrame& frame, game::GameHand
 
             const char* weatherIcon = nullptr;
             ImU32 weatherColor = IM_COL32(255, 255, 255, 200);
-            const uint32_t weatherType = gameHandler.getWeatherType();
+            const game::WeatherKind weatherKind = gameHandler.getWeatherKind();
             const float weatherIntensity = gameHandler.getWeatherIntensity();
-            if (weatherType == 1 && weatherIntensity > 0.05f) {
+            if (weatherKind == game::WeatherKind::RAIN && weatherIntensity > 0.05f) {
                 weatherIcon = " \xe2\x9b\x86"; // Rain
                 weatherColor = IM_COL32(140, 180, 240, 220);
-            } else if (weatherType == 2 && weatherIntensity > 0.05f) {
+            } else if (weatherKind == game::WeatherKind::SNOW && weatherIntensity > 0.05f) {
                 weatherIcon = " \xe2\x9d\x84"; // Snow
                 weatherColor = IM_COL32(210, 230, 255, 220);
-            } else if (weatherType == 3 && weatherIntensity > 0.05f) {
+            } else if (weatherKind != game::WeatherKind::NONE && weatherIntensity > 0.05f) {
                 weatherIcon = " \xe2\x98\x81"; // Storm/fog
                 weatherColor = IM_COL32(160, 160, 190, 220);
             }
@@ -2206,8 +2207,21 @@ void GameScreen::loadSettings() {
 // Screen-space weather overlay (rain / snow / storm)
 // ---------------------------------------------------------------------------
 void GameScreen::renderWeatherOverlay(game::GameHandler& gameHandler) {
-    uint32_t wType     = gameHandler.getWeatherType();
-    float    intensity = gameHandler.getWeatherIntensity();
+    (void)gameHandler;
+    // What the world's weather particles are drawing, so this stops where they
+    // do: indoors, and in Duskwood.
+    auto* renderer = services_.renderer;
+    const rendering::Weather* weather = renderer ? renderer->getWeather() : nullptr;
+    if (!weather || !weather->isEnabled()) return;
+    // 1 rain, 2 snow, 3 storm, as drawn below.
+    uint32_t wType = 0;
+    switch (weather->getWeatherType()) {
+        case rendering::Weather::Type::RAIN:  wType = 1; break;
+        case rendering::Weather::Type::SNOW:  wType = 2; break;
+        case rendering::Weather::Type::STORM: wType = 3; break;
+        default: break;
+    }
+    float    intensity = weather->getIntensity();
     if (wType == 0 || intensity < 0.05f) return;
 
     const ImGuiIO& io = ImGui::GetIO();

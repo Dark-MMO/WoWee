@@ -34,6 +34,7 @@
 #include <unordered_set>
 
 #include "game/spell_description_eval.hpp"
+#include "game/weather_state.hpp"
 #include <map>
 #include <optional>
 #include <algorithm>
@@ -1489,12 +1490,17 @@ public:
     float getGCDTotal() const;
     bool isGCDActive() const { return getGCDRemaining() > 0.0f; }
 
-    // Weather state (updated by SMSG_WEATHER)
-    // weatherType: 0=clear, 1=rain, 2=snow, 3=storm/fog
+    // Weather state (updated by SMSG_WEATHER): the server's WeatherState, see
+    // weather_state.hpp
     uint32_t getWeatherType() const { return weatherType_; }
+    WeatherKind getWeatherKind() const { return weatherKind(weatherType_); }
     float getWeatherIntensity() const { return weatherIntensity_; }
-    bool isRaining() const { return weatherType_ == 1 && weatherIntensity_ > 0.05f; }
-    bool isSnowing() const { return weatherType_ == 2 && weatherIntensity_ > 0.05f; }
+    bool isRaining() const {
+        const WeatherKind kind = getWeatherKind();
+        return (kind == WeatherKind::RAIN || kind == WeatherKind::THUNDERSTORM) &&
+               weatherIntensity_ > 0.05f;
+    }
+    bool isSnowing() const { return getWeatherKind() == WeatherKind::SNOW && weatherIntensity_ > 0.05f; }
     uint32_t getOverrideLightId() const { return overrideLightId_; }
     uint32_t getOverrideLightTransMs() const { return overrideLightTransMs_; }
 
@@ -4971,8 +4977,9 @@ private:
     void handleLoginSetTimeSpeed(network::Packet& packet);
 
     // ---- Weather state (SMSG_WEATHER) ----
-    uint32_t weatherType_ = 0;       // 0=clear, 1=rain, 2=snow, 3=storm
+    uint32_t weatherType_ = 0;       // WeatherState, 0 = fine
     float weatherIntensity_ = 0.0f;  // 0.0 to 1.0
+    void applyWeather(uint32_t state, float intensity);
 
     // ---- Light override (SMSG_OVERRIDE_LIGHT) ----
     uint32_t overrideLightId_ = 0;      // 0 = no override
