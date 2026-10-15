@@ -86,6 +86,11 @@ public:
     [[nodiscard]] uint32_t getAutoRepeatSpellId() const { return autoRepeatSpellId_; }
     void clearAutoRepeat() { autoRepeatSpellId_ = 0; }
     [[nodiscard]] bool isGameObjectInteractionCasting() const;
+    // The cast or channel in progress, else the ability queued for the next swing.
+    [[nodiscard]] uint32_t getActiveActionSpellId() const {
+        if (casting_) return currentCastSpellId_;
+        return restorationActive_ ? restorationSpellId_ : nextSwingSpellId_;
+    }
     [[nodiscard]] uint32_t getCurrentCastSpellId() const {
         return casting_ ? currentCastSpellId_ : restorationSpellId_;
     }
@@ -467,6 +472,12 @@ private:
     uint32_t currentCastSpellId_ = 0;
     uint32_t autoRepeatSpellId_ = 0;
     uint8_t autoRepeatCastCount_ = 0;
+    // An on-next-swing ability between its SMSG_SPELL_START and the swing.
+    uint32_t nextSwingSpellId_ = 0;
+    // What the action buttons were last told, so a cast or swing changing is
+    // announced once whichever of the many cast paths changed it.
+    uint32_t announcedCastSpellId_ = 0;
+    bool announcedAutoAttack_ = false;
     float castTimeRemaining_ = 0.0f;
     float castTimeTotal_ = 0.0f;
     bool restorationActive_ = false;
@@ -522,6 +533,9 @@ private:
     // Global Cooldown
     float gcdTotal_ = 0.0f;
     std::chrono::steady_clock::time_point gcdStartedAt_{};
+    // The cast that started the optimistic GCD, which a refused cast takes back.
+    uint32_t optimisticGcdSpellId_ = 0;
+    uint8_t optimisticGcdCastCount_ = 0;
 
     // Spell book tabs
     std::vector<SpellBookTab> spellBookTabs_;

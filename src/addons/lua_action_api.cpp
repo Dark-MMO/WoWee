@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include "game/current_action.hpp"
 #include "game/pet_action.hpp"
 #include "imgui.h"
 #include <optional>
@@ -212,9 +213,18 @@ static int lua_GetActionTexture(lua_State* L) {
 
 // IsCurrentAction(slot) → boolean
 static int lua_IsCurrentAction(lua_State* L) {
-    // Currently no "active action" tracking; return false
-    (void)L;
-    lua_pushboolean(L, 0);
+    auto* gh = getGameHandler(L);
+    const int slot = static_cast<int>(luaL_optnumber(L, 1, 0)) - 1;
+    bool current = false;
+    if (gh && slot >= 0) {
+        const auto& bar = gh->getActionBar();
+        if (slot < static_cast<int>(bar.size()) &&
+            bar[slot].type == game::ActionBarSlot::SPELL) {
+            current = game::isCurrentSpellAction(bar[slot].id, gh->getActiveActionSpellId(),
+                                                 gh->isAutoAttacking());
+        }
+    }
+    lua_pushboolean(L, current);
     return 1;
 }
 

@@ -3998,6 +3998,9 @@ const std::unordered_map<uint32_t, TalentTabEntry>& GameHandler::getAllTalentTab
     static const std::unordered_map<uint32_t, TalentTabEntry> empty;
     return empty;
 }
+float GameHandler::getGCDRemaining() const {
+    return spellHandler_ ? spellHandler_->getGCDRemaining() : 0.0f;
+}
 float GameHandler::getGCDTotal() const {
     return spellHandler_ ? spellHandler_->getGCDTotal() : 0.0f;
 }

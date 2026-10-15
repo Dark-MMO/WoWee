@@ -149,3 +149,25 @@ TEST_CASE("only the player's own auto repeat cancel stops Auto Shot", "[replay]"
     s.receive(autoRepeatCancelled(Session::kPlayerGuid));
     CHECK(s.handler().getAutoRepeatSpellId() == 0);
 }
+
+constexpr uint32_t kArcaneShot = 3044;
+
+TEST_CASE("a refused cast takes back the GCD it started", "[replay]") {
+    Session s;
+    huntMob(s);
+    s.handler().castSpell(kArcaneShot, kMob);
+    REQUIRE(s.handler().isGCDActive());
+
+    s.receive(castFailed(lastCastCount(s), kArcaneShot, kOutOfRange));
+    CHECK_FALSE(s.handler().isGCDActive());
+}
+
+TEST_CASE("a press refused during the GCD leaves the GCD running", "[replay]") {
+    Session s;
+    huntMob(s);
+    s.handler().castSpell(kArcaneShot, kMob);
+    s.handler().castSpell(kArcaneShot, kMob);
+
+    s.receive(castFailed(lastCastCount(s), kArcaneShot, kNotReady));
+    CHECK(s.handler().isGCDActive());
+}
