@@ -446,3 +446,55 @@ TEST_CASE("a fully blocked hit shows only the block", "[replay]") {
     s.receive(swing(kWolf, Session::kPlayerGuid, 0, 5, 0x2 | 0x2000, 12));
     CHECK(combatTextTypes(s) == std::vector<T::Type>{T::BLOCK});
 }
+
+namespace {
+
+constexpr uint32_t kRaptorStrike = 2973;
+
+// Spell::SendSpellStart for the player's own spell on no particular target.
+wowee::network::Packet spellStart(uint8_t castCount, uint32_t spellId, uint32_t castTimeMs) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_SPELL_START));
+    p.writePackedGuid(Session::kPlayerGuid);
+    p.writePackedGuid(Session::kPlayerGuid);
+    p.writeUInt8(castCount);
+    p.writeUInt32(spellId);
+    p.writeUInt32(0);  // cast flags
+    p.writeUInt32(castTimeMs);
+    p.writeUInt32(0);  // target flags: none
+    return p;
+}
+
+}  // namespace
+
+// Spell::SendCastResult writes the press's castCount; the server's own casts,
+// such as each Auto Shot after the first, have none and send 0.
+TEST_CASE("a press never goes out with castCount 0", "[replay]") {
+    Session s;
+    huntMob(s);
+    for (int i = 0; i < 255; ++i) s.handler().castSpell(kArcaneShot, kMob);
+    s.handler().castSpell(kAutoShot, kMob);
+    CHECK(lastCastCount(s) != 0);
+
+    s.receive(castFailed(0, kAutoShot, kOutOfRange));
+    CHECK(s.handler().getAutoRepeatSpellId() == kAutoShot);
+}
+
+TEST_CASE("a refused second press leaves the queued swing ability lit", "[replay]") {
+    Session s;
+    huntMob(s);
+    auto& cache = s.handler().spellNameCacheRef();
+    cache[kRaptorStrike].attr = 0x4;  // SPELL_ATTR0_ON_NEXT_SWING
+    s.handler().spellNameCacheLoadedRef() = true;
+
+    s.handler().castSpell(kRaptorStrike, kMob);
+    const uint8_t queued = lastCastCount(s);
+    s.receive(spellStart(queued, kRaptorStrike, 0));
+    REQUIRE(s.handler().getActiveActionSpellId() == kRaptorStrike);
+
+    s.handler().castSpell(kRaptorStrike, kMob);
+    s.receive(castFailed(lastCastCount(s), kRaptorStrike, kNotReady));
+    CHECK(s.handler().getActiveActionSpellId() == kRaptorStrike);
+
+    s.receive(castFailed(queued, kRaptorStrike, kOutOfRange));
+    CHECK(s.handler().getActiveActionSpellId() == 0);
+}

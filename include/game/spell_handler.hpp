@@ -474,6 +474,7 @@ private:
     uint8_t autoRepeatCastCount_ = 0;
     // An on-next-swing ability between its SMSG_SPELL_START and the swing.
     uint32_t nextSwingSpellId_ = 0;
+    uint8_t nextSwingCastCount_ = 0;
     // What the action buttons were last told, so a cast or swing changing is
     // announced once whichever of the many cast paths changed it.
     uint32_t announcedCastSpellId_ = 0;
