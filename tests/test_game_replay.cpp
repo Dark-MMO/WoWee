@@ -465,46 +465,6 @@ wowee::network::Packet spellStart(uint8_t castCount, uint32_t spellId, uint32_t 
     return p;
 }
 
-namespace {
-
-bool petCanBeRenamed(Session& s) {
-    lua_State* L = luaL_newstate();
-    lua_pushlightuserdata(L, &s.handler());
-    lua_setfield(L, LUA_REGISTRYINDEX, "wowee_game_handler");
-    wowee::addons::registerSocialLuaAPI(L);
-    REQUIRE(luaL_dostring(L, "return PetCanBeRenamed()") == 0);
-    const bool result = lua_toboolean(L, -1) != 0;
-    lua_close(L);
-    return result;
-}
-
-namespace {
-
-// WorldObject::SendSpellMiss: the spell, the caster's guid whole, an unknown
-// byte, one target, its guid whole, and how it missed (SpellMissInfo).
-wowee::network::Packet spellMiss(uint64_t caster, uint64_t victim, uint32_t spellId, uint8_t missInfo) {
-    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_SPELLLOGMISS));
-    p.writeUInt32(spellId);
-    p.writeUInt64(caster);
-    p.writeUInt8(0);
-    p.writeUInt32(1);
-    p.writeUInt64(victim);
-    p.writeUInt8(missInfo);
-    return p;
-}
-
-std::vector<wowee::game::CombatTextEntry::Type> spellMissText(uint64_t caster, uint64_t victim,
-                                                               uint8_t missInfo) {
-    Session s;
-    huntMob(s);
-    // Resists and immunities show only on the target (fctSpellMechanics).
-    s.handler().setTarget(kMob);
-    s.receive(spellMiss(caster, victim, kArcaneShot, missInfo));
-    std::vector<wowee::game::CombatTextEntry::Type> types;
-    for (const auto& e : s.handler().getCombatText()) types.push_back(e.type);
-    return types;
-}
-
 }  // namespace
 
 // Spell::SendCastResult writes the press's castCount; the server's own casts,
@@ -540,6 +500,21 @@ TEST_CASE("a refused second press leaves the queued swing ability lit", "[replay
     CHECK(s.handler().getActiveActionSpellId() == 0);
 }
 
+namespace {
+
+bool petCanBeRenamed(Session& s) {
+    lua_State* L = luaL_newstate();
+    lua_pushlightuserdata(L, &s.handler());
+    lua_setfield(L, LUA_REGISTRYINDEX, "wowee_game_handler");
+    wowee::addons::registerSocialLuaAPI(L);
+    REQUIRE(luaL_dostring(L, "return PetCanBeRenamed()") == 0);
+    const bool result = lua_toboolean(L, -1) != 0;
+    lua_close(L);
+    return result;
+}
+
+}  // namespace
+
 // Pet::LoadPetFromDB sets UNIT_CAN_BE_RENAMED (0x01) beside
 // UNIT_CAN_BE_ABANDONED only on a pet never named, and
 // WorldSession::HandlePetRename clears it.
@@ -554,6 +529,35 @@ TEST_CASE("PetCanBeRenamed follows the pet's rename flag", "[replay]") {
     s.receive(UpdateObject().values(kPet, {{UF::UNIT_FIELD_BYTES_2, 0x02u << 16}}));
     CHECK_FALSE(petCanBeRenamed(s));
 }
+
+namespace {
+
+// WorldObject::SendSpellMiss: the spell, the caster's guid whole, an unknown
+// byte, one target, its guid whole, and how it missed (SpellMissInfo).
+wowee::network::Packet spellMiss(uint64_t caster, uint64_t victim, uint32_t spellId, uint8_t missInfo) {
+    wowee::network::Packet p(wowee::game::wireOpcode(wowee::game::Opcode::SMSG_SPELLLOGMISS));
+    p.writeUInt32(spellId);
+    p.writeUInt64(caster);
+    p.writeUInt8(0);
+    p.writeUInt32(1);
+    p.writeUInt64(victim);
+    p.writeUInt8(missInfo);
+    return p;
+}
+
+std::vector<wowee::game::CombatTextEntry::Type> spellMissText(uint64_t caster, uint64_t victim,
+                                                               uint8_t missInfo) {
+    Session s;
+    huntMob(s);
+    // Resists and immunities show only on the target (fctSpellMechanics).
+    s.handler().setTarget(kMob);
+    s.receive(spellMiss(caster, victim, kArcaneShot, missInfo));
+    std::vector<wowee::game::CombatTextEntry::Type> types;
+    for (const auto& e : s.handler().getCombatText()) types.push_back(e.type);
+    return types;
+}
+
+}  // namespace
 
 namespace {
 
