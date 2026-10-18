@@ -406,7 +406,8 @@ network::Packet ClassicPacketParsers::buildCastGameObjectSpell(uint32_t spellId,
 // ============================================================================
 network::Packet ClassicPacketParsers::buildUseItem(uint8_t bagIndex, uint8_t slotIndex,
                                                    uint64_t /*itemGuid*/, uint32_t /*spellId*/,
-                                                   uint64_t targetGuid, uint64_t itemTargetGuid) {
+                                                   uint64_t targetGuid, uint64_t itemTargetGuid,
+                                                   uint64_t gameObjectGuid) {
     network::Packet packet(wireOpcode(LogicalOpcode::CMSG_USE_ITEM));
     packet.writeUInt8(bagIndex);
     packet.writeUInt8(slotIndex);
@@ -414,6 +415,9 @@ network::Packet ClassicPacketParsers::buildUseItem(uint8_t bagIndex, uint8_t slo
     if (itemTargetGuid != 0) {
         packet.writeUInt16(0x0010); // TARGET_FLAG_ITEM
         packet.writePackedGuid(itemTargetGuid);
+    } else if (gameObjectGuid != 0) {
+        packet.writeUInt16(0x0800); // TARGET_FLAG_OBJECT
+        packet.writePackedGuid(gameObjectGuid);
     } else if (targetGuid != 0) {
         packet.writeUInt16(0x0002); // TARGET_FLAG_UNIT
         packet.writePackedGuid(targetGuid);

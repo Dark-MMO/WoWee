@@ -4635,6 +4635,15 @@ private:
         uint8_t remainingAttempts = 1;
     };
     std::vector<PendingLootOpen> pendingGameObjectLootOpens_;
+    // A click on a game object whose query response hasn't arrived yet. It is
+    // held until the data lands (or the wait runs out) and dispatched then.
+    struct DeferredGameObjectClick {
+        uint64_t guid = 0;
+        uint32_t entry = 0;
+        float timer = 0.0f;
+        bool released = false;
+    };
+    DeferredGameObjectClick deferredGameObjectClick_;
     // Tracks the last GO we sent CMSG_GAMEOBJ_USE to; used in handleSpellGo
     // to send CMSG_LOOT after a gather cast (mining/herbalism) completes.
     uint64_t lastInteractedGoGuid_ = 0;
@@ -4672,6 +4681,8 @@ private:
     GossipMessageData currentGossip;
 
     void performGameObjectInteractionNow(uint64_t guid);
+    bool deferGameObjectClickUntilQueried(uint64_t guid);
+    void updateDeferredGameObjectClick(float deltaTime);
 
     // Quest details
     bool questDetailsOpen = false;

@@ -2468,6 +2468,9 @@ public:
                                  uint64_t itemGuid, uint32_t spellId = 0,
                                  uint64_t targetGuid = 0, uint64_t itemTargetGuid = 0,
                                  uint64_t gameObjectGuid = 0, uint32_t glyphIndex = 0);
+    /// The SpellCastTargets that end a use, with TBC and WotLK's 32-bit flags.
+    static void writeTargets(network::Packet& packet, uint64_t targetGuid,
+                             uint64_t itemTargetGuid, uint64_t gameObjectGuid);
 };
 
 /** CMSG_OPEN_ITEM packet builder (for locked containers / lockboxes) */

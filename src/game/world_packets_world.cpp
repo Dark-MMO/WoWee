@@ -525,6 +525,12 @@ network::Packet UseItemPacket::build(uint8_t bagIndex, uint8_t slotIndex,
     packet.writeUInt64(itemGuid); // full 8-byte GUID
     packet.writeUInt32(glyphIndex); // the socket, when a glyph is being placed
     packet.writeUInt8(0);  // cast flags
+    writeTargets(packet, targetGuid, itemTargetGuid, gameObjectGuid);
+    return packet;
+}
+
+void UseItemPacket::writeTargets(network::Packet& packet, uint64_t targetGuid,
+                                 uint64_t itemTargetGuid, uint64_t gameObjectGuid) {
     if (itemTargetGuid != 0) {
         // Sharpening stones, weightstones and weapon oils enchant another item:
         // the server requires the target item in SpellCastTargets.
@@ -540,7 +546,6 @@ network::Packet UseItemPacket::build(uint8_t bagIndex, uint8_t slotIndex,
     } else {
         packet.writeUInt32(0x00); // TARGET_FLAG_SELF
     }
-    return packet;
 }
 
 network::Packet OpenItemPacket::build(uint8_t bagIndex, uint8_t slotIndex) {

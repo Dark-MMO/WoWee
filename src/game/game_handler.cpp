@@ -620,6 +620,8 @@ void GameHandler::updateTimers(float deltaTime) {
         }
     }
 
+    updateDeferredGameObjectClick(deltaTime);
+
     for (auto it = pendingGameObjectLootOpens_.begin(); it != pendingGameObjectLootOpens_.end();) {
         it->timer -= deltaTime;
         if (it->timer <= 0.0f) {

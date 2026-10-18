@@ -93,14 +93,26 @@ bool containsAnyTerm(const std::string& haystack, const char* const* terms, size
 // hole's loot, harvesting the school in one right-click.
 constexpr uint32_t kGoTypeFishingHole = 25;
 
-bool isLootContainerName(const std::string& name) {
-    const std::string lower = lowerCopy(name);
-    static constexpr const char* kContainerTerms[] = {
-        "chest", "lockbox", "strongbox", "coffer", "cache", "bundle",
-        "sack", "bag", "crate", "barrel", "basket", "oats"
-    };
-    return containsAnyTerm(lower, kContainerTerms,
-                           sizeof(kContainerTerms) / sizeof(kContainerTerms[0]));
+// The Lock.dbc row a game object is opened through. Most types keep it in
+// data[0]; doors and buttons in data[1]. The same on every expansion.
+uint32_t gameObjectLockId(const GameObjectQueryResponseData* info) {
+    if (!info || !info->hasData) return 0;
+    switch (info->type) {
+        case 0:  // DOOR
+        case 1:  // BUTTON
+            return info->data[1];
+        case 2:  // QUESTGIVER
+        case 3:  // CHEST
+        case 6:  // TRAP
+        case 10: // GOOBER
+        case 12: // AREADAMAGE
+        case 13: // CAMERA
+        case 24: // FLAGSTAND
+        case 26: // FLAGDROP
+            return info->data[0];
+        default:
+            return 0;
+    }
 }
 
 // How the local player should open a game object, decided from its Lock.dbc row.
@@ -126,7 +138,8 @@ LockOpenPlan planGameObjectOpen(pipeline::AssetManager* assets,
                                 const GameObjectQueryResponseData* info,
                                 const std::unordered_set<uint32_t>& knownSpells) {
     LockOpenPlan plan;
-    if (!assets || !info || !info->hasData || info->data[0] == 0) return plan;
+    const uint32_t lockId = gameObjectLockId(info);
+    if (!assets || lockId == 0) return plan;
 
     auto lockDbc = assets->loadDBC("Lock.dbc");
     auto spellDbc = assets->loadDBC("Spell.dbc");
@@ -149,7 +162,6 @@ LockOpenPlan planGameObjectOpen(pipeline::AssetManager* assets,
         return plan; // Can't inspect the lock - let the server adjudicate a USE.
     }
 
-    const uint32_t lockId = info->data[0];
     for (uint32_t row = 0; row < lockDbc->getRecordCount(); ++row) {
         if (lockDbc->getUInt32(row, 0) != lockId) continue;
 
@@ -2983,9 +2995,51 @@ void GameHandler::interactWithGameObject(uint64_t guid) {
     performGameObjectInteractionNow(guid);
 }
 
+// The original client can't use an object it has no template for, and neither
+// can this: what to send depends on the type and the lock. A click that beats
+// the query response used to go out as a bare USE plus LOOT probes, which
+// AzerothCore ignores for a chest, and the click was lost. Hold it instead.
+bool GameHandler::deferGameObjectClickUntilQueried(uint64_t guid) {
+    if (deferredGameObjectClick_.guid == guid && deferredGameObjectClick_.released) {
+        deferredGameObjectClick_ = {};
+        return false;
+    }
+    if (!entityController_) return false;
+    auto entity = entityController_->getEntityManager().getEntity(guid);
+    if (!entity || entity->getType() != ObjectType::GAMEOBJECT) return false;
+    const uint32_t entry = std::static_pointer_cast<GameObject>(entity)->getEntry();
+    if (entry == 0 || getCachedGameObjectInfo(entry)) return false;
+
+    queryGameObjectInfo(entry, guid);
+    deferredGameObjectClick_ = {guid, entry, 1.5f, false};
+    LOG_INFO("GO click held for query response: guid=0x", std::hex, guid, std::dec,
+             " entry=", entry);
+    return true;
+}
+
+void GameHandler::updateDeferredGameObjectClick(float deltaTime) {
+    auto& click = deferredGameObjectClick_;
+    if (click.guid == 0 || click.released) return;
+    click.timer -= deltaTime;
+    const bool ready = getCachedGameObjectInfo(click.entry) != nullptr;
+    if (!ready && click.timer > 0.0f) return;
+    if (!isInWorld() || !getEntityManager().getEntity(click.guid)) {
+        click = {};
+        return;
+    }
+    if (!ready) {
+        // Dispatched anyway, the way it was before clicks were held.
+        LOG_WARNING("GO query response never arrived for entry=", click.entry,
+                    " - using guid=0x", std::hex, click.guid, std::dec, " without it");
+    }
+    click.released = true;
+    performGameObjectInteractionNow(click.guid);
+}
+
 void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
     if (guid == 0) return;
     if (!isInWorld()) return;
+    if (deferGameObjectClickUntilQueried(guid)) return;
     // Rate-limit to prevent spamming the server
     static uint64_t lastInteractGuid = 0;
     static std::chrono::steady_clock::time_point lastInteractTime{};
@@ -3084,18 +3138,24 @@ void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
             isReadable = true;
         }
     }
-    if (!chestLike && !goName.empty()) {
-        // Query metadata can arrive after the player clicks. Recognize common
-        // quest-loot containers by name so objects such as Sack of Oats still
-        // receive the delayed CMSG_LOOT sequence used by type-3 chests.
-        chestLike = isLootContainerName(goName);
-    }
-
     LOG_INFO("GO interaction: guid=0x", std::hex, guid, std::dec,
              " entry=", goEntry, " type=", goType,
              " name='", goName, "' chestLike=", chestLike,
              " metadataPending=", metadataPending, " isMailbox=", isMailbox,
-             " lockId=", (goInfo && goInfo->hasData ? goInfo->data[0] : 0));
+             " lockId=", gameObjectLockId(goInfo));
+
+    // The original client sends CMSG_GAMEOBJ_REPORT_USE after every use, whether
+    // it went out as a USE, an open-lock cast, a key or a gather. The server runs
+    // the object's report-use scripts (SmartAI quest credit) and the use-object
+    // achievement criteria from it. Only WotLK's table has the opcode.
+    const auto sendReportUse = [this, guid]() {
+        const auto* table = getActiveOpcodeTable();
+        if (table && table->hasOpcode(Opcode::CMSG_GAMEOBJ_REPORT_USE)) {
+            network::Packet reportUse(wireOpcode(Opcode::CMSG_GAMEOBJ_REPORT_USE));
+            reportUse.writeUInt64(guid);
+            socket->send(reportUse);
+        }
+    };
 
     const uint32_t gatherBaseSpellId = gatherSpellForGameObject(goInfo, goName);
     if (gatherBaseSpellId != 0) {
@@ -3113,16 +3173,17 @@ void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
         socket->send(castPacket);
         lastInteractedGoGuid_ = guid;
         scheduleGameObjectLootOpen(guid, 0.50f, 8);
+        sendReportUse();
         LOG_INFO("GO gather cast: spell=", gatherSpellId, " guid=0x",
                  std::hex, guid, std::dec, " name='", goName, "'");
         return;
     }
 
-    if (chestLike && isActiveExpansion("wotlk")) {
-        // A locked type-3 chest is opened by casting an OPEN_LOCK spell at it (a
-        // known Pick Lock, or the generic Opening); the server then validates the
-        // lock. A plain CMSG_GAMEOBJ_USE only opens unlocked / server-gated quest
-        // containers (e.g. the Legend of Stalvan Sealed Crate).
+    if (gameObjectLockId(goInfo) != 0) {
+        // A locked object is opened by casting an OPEN_LOCK spell at it (a known
+        // Pick Lock, or the generic Opening), on every expansion; the server then
+        // validates the lock. A plain CMSG_GAMEOBJ_USE only opens unlocked /
+        // server-gated quest containers (e.g. the Legend of Stalvan Sealed Crate).
         const LockOpenPlan plan = planGameObjectOpen(
             services_.assetManager, goInfo, spellHandler_->getKnownSpells());
         if (plan.method == LockOpenMethod::CastSpell) {
@@ -3131,7 +3192,8 @@ void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
             socket->send(castPacket);
             lastInteractedGoGuid_ = guid;
             scheduleGameObjectLootOpen(guid, 0.60f, 8);
-            LOG_INFO("GO chest open-lock cast: spell=", plan.spellId,
+            sendReportUse();
+            LOG_INFO("GO open-lock cast: spell=", plan.spellId,
                      " guid=0x", std::hex, guid, std::dec,
                      " entry=", goEntry, " name='", goName, "'");
             return;
@@ -3174,12 +3236,13 @@ void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
                 }
 
             if (keyFound && keyUseSpell != 0) {
-                auto usePacket = UseItemPacket::build(keyBag, keySlot, keyGuid,
-                                                      keyUseSpell, 0, 0, guid);
+                auto usePacket = getPacketParsers()->buildUseItem(keyBag, keySlot, keyGuid,
+                                                                  keyUseSpell, 0, 0, guid);
                 socket->send(usePacket);
                 lastInteractedGoGuid_ = guid;
                 scheduleGameObjectLootOpen(guid, 0.60f, 8);
-                LOG_INFO("GO chest key-item use: keyItem=", plan.keyItemId,
+                sendReportUse();
+                LOG_INFO("GO key-item use: keyItem=", plan.keyItemId,
                          " spell=", keyUseSpell, " keySlot(bag=", (int)keyBag,
                          " slot=", (int)keySlot, ") guid=0x", std::hex, guid, std::dec,
                          " entry=", goEntry, " name='", goName, "'");
@@ -3187,8 +3250,7 @@ void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
             }
         }
         // LockOpenMethod::UseDirect - fall through to CMSG_GAMEOBJ_USE.
-        LOG_INFO("GO chest opens via direct USE: lockId=",
-                 goInfo && goInfo->hasData ? goInfo->data[0] : 0,
+        LOG_INFO("GO opens via direct USE: lockId=", gameObjectLockId(goInfo),
                  " keyItem=", plan.keyItemId,
                  " guid=0x", std::hex, guid, std::dec,
                  " entry=", goEntry, " name='", goName, "'");
@@ -3233,18 +3295,7 @@ void GameHandler::performGameObjectInteractionNow(uint64_t guid) {
         if (entityController_) entityController_->showGameObjectPageText(guid);
     }
 
-    // CMSG_GAMEOBJ_REPORT_USE triggers GO AI scripts (SmartAI, ScriptAI) which
-    // is where many quest objectives grant credit. Previously this was only sent
-    // for non-chest GOs, so chest-type quest objectives (Bundle of Wood, etc.)
-    // never triggered the server-side quest credit script.
-    if (!isMailbox && !isGuildBank) {
-        const auto* table = getActiveOpcodeTable();
-        if (table && table->hasOpcode(Opcode::CMSG_GAMEOBJ_REPORT_USE)) {
-            network::Packet reportUse(wireOpcode(Opcode::CMSG_GAMEOBJ_REPORT_USE));
-            reportUse.writeUInt64(guid);
-            socket->send(reportUse);
-        }
-    }
+    sendReportUse();
 }
 
 void GameHandler::selectGossipOption(uint32_t optionId, const std::string& code) {

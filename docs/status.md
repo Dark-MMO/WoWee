@@ -81,7 +81,7 @@ In progress / known gaps:
 
 - World map: zone hover detection has edge cases with some zone boundaries
 - Transports: M2 transports (trams) working with position-delta riding; WMO transports (ships, zeppelins) working with path following; some edge cases remain
-- Quest GO interaction: CMSG_GAMEOBJ_USE + CMSG_LOOT sent correctly, but some AzerothCore/ChromieCraft servers don't grant quest credit for chest-type GOs (server-side limitation)
+- Quest GO interaction: locked objects are opened with the OPEN_LOCK cast and REPORT_USE follows every use, as the original client does; untested against AzerothCore/ChromieCraft chest quests (#196). CMSG_LOOT probes for gameobjects are still sent, for cores that open chests that way
 - Visual edge cases: some M2/WMO rendering gaps (some particle effects)
 - Water refraction: always on and no longer a setting; srcAccessMask barrier fix (2026-03-18) resolved prior VK_ERROR_DEVICE_LOST on AMD/Mali GPUs
 - Shadows: held on, with no settings control. Turning them off loses the device, and the fault is not found yet
